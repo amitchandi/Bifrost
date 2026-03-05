@@ -1,0 +1,8 @@
+{
+  "server": "your-sql-server",
+  "port": 1433,
+  "username": "your-username",
+  "password": "your-password",
+  "encrypt": true,
+  "trustServerCertificate": false
+}

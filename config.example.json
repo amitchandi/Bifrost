@@ -1,0 +1,37 @@
+{
+  "databases": [
+    {
+      "comment": "Tenant filter with per-table overrides",
+      "sourceDatabase": "MainAppDB",
+      "targetDatabase": "MainAppDB_Staging",
+      "tableFilter": "tenant",
+      "tenantId": "42",
+      "overrides": [
+        { "name": "dbo.HugeTable_42", "where": "CreatedAt >= '2024-01-01'" },
+        { "name": "dbo.AnotherBigTable_42", "query": "SELECT TOP 1000 * FROM [dbo].[AnotherBigTable_42] ORDER BY CreatedAt DESC" },
+        { "name": "dbo.UnwantedTable_42", "ignore": true }
+      ]
+    },
+    {
+      "comment": "Explicit table list",
+      "sourceDatabase": "ReportingDB",
+      "targetDatabase": "ReportingDB_Staging",
+      "tableFilter": "explicit",
+      "tables": [
+        "dbo.SmallTable",
+        { "name": "dbo.HugeTable", "where": "CreatedAt >= '2024-01-01'" },
+        { "name": "dbo.CustomTable", "query": "SELECT TOP 1000 * FROM [dbo].[CustomTable] ORDER BY CreatedAt DESC" },
+        { "name": "dbo.UnwantedTable", "ignore": true }
+      ]
+    },
+    {
+      "comment": "All tables, ignore one",
+      "sourceDatabase": "LookupDB",
+      "targetDatabase": "LookupDB_Staging",
+      "tableFilter": "all",
+      "overrides": [
+        { "name": "dbo.LargeAuditLog", "ignore": true }
+      ]
+    }
+  ]
+}
