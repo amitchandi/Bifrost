@@ -1,5 +1,5 @@
-using Bifrost;
 using System.CommandLine;
+using Bifrost;
 
 var rootCmd = new RootCommand("SQL Server migration tool");
 
@@ -30,12 +30,14 @@ var directCmd = new Command("direct", "Migrate directly from source to target (b
 var directConfig = new Option<string>("--config", () => "config.json", "Migration config file");
 var directSource = new Option<string>("--source", () => "source-connection.json", "Source connection file");
 var directTarget = new Option<string>("--target", () => "target-connection.json", "Target connection file");
+var directBulk = new Option<bool>("--bulk", () => false, "Use SqlBulkCopy for faster transfers");
 directCmd.AddOption(directConfig);
 directCmd.AddOption(directSource);
 directCmd.AddOption(directTarget);
-directCmd.SetHandler((config, source, target) =>
-    Environment.Exit(Migrator.Run(config, source, target)),
-    directConfig, directSource, directTarget);
+directCmd.AddOption(directBulk);
+directCmd.SetHandler((config, source, target, bulk) =>
+    Environment.Exit(Migrator.Run(config, source, target, bulk)),
+    directConfig, directSource, directTarget, directBulk);
 
 // ── root ─────────────────────────────────────────────────────────────────────
 rootCmd.AddCommand(exportCmd);

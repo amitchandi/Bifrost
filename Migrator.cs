@@ -5,11 +5,11 @@ namespace Bifrost;
 
 public static class Migrator
 {
-    public static int Run(string configFile, string sourceConnectionFile, string targetConnectionFile)
+    public static int Run(string configFile, string sourceConnectionFile, string targetConnectionFile, bool bulk = false)
     {
         Console.WriteLine();
         Console.WriteLine("============================================================");
-        Console.WriteLine("  Bifrost — Direct Migration");
+        Console.WriteLine($"  Bifrost — Direct Migration{(bulk ? "(bulk)" : "")}");
         Console.WriteLine("============================================================");
         Console.WriteLine();
 
@@ -71,7 +71,7 @@ public static class Migrator
 
                     try
                     {
-                        MigrateTable(srcConn, dstConn, t);
+                        MigrateTable(srcConn, dstConn, t, bulk);
                         totalOk++;
                     }
                     catch (Exception ex)
@@ -103,7 +103,8 @@ public static class Migrator
     private static void MigrateTable(
         Microsoft.Data.SqlClient.SqlConnection srcConn,
         Microsoft.Data.SqlClient.SqlConnection dstConn,
-        TableRef t)
+        TableRef t,
+        bool bulk)
     {
         var fullName = $"[{t.Schema}].[{t.Name}]";
         var columns = Database.GetColumns(srcConn, t.Schema, t.Name);
@@ -121,6 +122,66 @@ public static class Migrator
         // Clear existing data
         Database.ExecuteBatch(dstConn, $"DELETE FROM {fullName}");
 
+        if (bulk)
+        {
+            MigrateTableBulk(srcConn, dstConn, t, fullName, colNames, hasIdentity);
+        }
+        else
+        {
+            MigrateTableInsert(srcConn, dstConn, t, fullName, columns, colNames, hasIdentity);
+        }
+
+        Console.WriteLine($"       [{DateTime.Now:HH:mm:ss}] [OK] {t.Schema}.{t.Name}");
+    }
+
+    private static void MigrateTableBulk(
+        Microsoft.Data.SqlClient.SqlConnection srcConn,
+        Microsoft.Data.SqlClient.SqlConnection dstConn,
+        TableRef t,
+        string fullName,
+        string colNames,
+        bool hasIdentity)
+    {
+        using var cmd = srcConn.CreateCommand();
+        cmd.CommandTimeout = 300;
+        cmd.CommandText = t.Query
+            ?? (t.Where != null
+                ? $"SELECT {colNames} FROM {fullName} WHERE {t.Where}"
+                : $"SELECT {colNames} FROM {fullName}");
+
+        using var reader = cmd.ExecuteReader();
+
+        var bulkOptions = hasIdentity
+            ? Microsoft.Data.SqlClient.SqlBulkCopyOptions.KeepIdentity
+            : Microsoft.Data.SqlClient.SqlBulkCopyOptions.Default;
+
+        using var bulk = new Microsoft.Data.SqlClient.SqlBulkCopy(dstConn, bulkOptions, null)
+        {
+            DestinationTableName = fullName,
+            BatchSize = 1000,
+            BulkCopyTimeout = 300,
+            NotifyAfter = 1000,
+        };
+
+        bulk.SqlRowsCopied += (_, e) =>
+            Console.WriteLine($"       [{DateTime.Now:HH:mm:ss}]     {e.RowsCopied} rows copied...");
+
+        // Map columns by name
+        foreach (var col in reader.GetColumnSchema())
+            bulk.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+
+        bulk.WriteToServer(reader);
+    }
+
+    private static void MigrateTableInsert(
+        Microsoft.Data.SqlClient.SqlConnection srcConn,
+        Microsoft.Data.SqlClient.SqlConnection dstConn,
+        TableRef t,
+        string fullName,
+        List<ColumnInfo> columns,
+        string colNames,
+        bool hasIdentity)
+    {
         if (hasIdentity)
         {
             Database.ExecuteBatch(dstConn,
@@ -135,8 +196,7 @@ public static class Migrator
         void FlushBuffer()
         {
             if (insertBuffer.Count == 0) return;
-            var batch = string.Join("\n", insertBuffer);
-            Database.ExecuteBatch(dstConn, batch);
+            Database.ExecuteBatch(dstConn, string.Join("\n", insertBuffer));
             insertBuffer.Clear();
         }
 
@@ -160,8 +220,6 @@ public static class Migrator
                 $"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.Name}'), 'TableHasIdentity') = 1 " +
                 $"SET IDENTITY_INSERT {fullName} OFF");
         }
-
-        Console.WriteLine($"       [{DateTime.Now:HH:mm:ss}] [OK] {t.Schema}.{t.Name} ({rowCount} rows)");
     }
 
     private static List<TableRef> ResolveTables(Microsoft.Data.SqlClient.SqlConnection conn, DbEntry entry)
