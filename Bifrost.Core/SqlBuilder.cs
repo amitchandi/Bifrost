@@ -1,7 +1,7 @@
 using System.Text;
 using Microsoft.Data.SqlClient;
 
-namespace Bifrost;
+namespace Bifrost.Core;
 
 public static class SqlBuilder
 {

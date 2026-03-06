@@ -1,0 +1,299 @@
+﻿using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Interactivity;
+using Bifrost.Core;
+
+namespace Bifrost.GUI.Views;
+
+public class ConfigEditorDialog : Window
+{
+    private readonly TextBox _nameBox;
+    private readonly TextBox _srcServer, _srcPort, _srcUser, _srcPass;
+    private readonly CheckBox _srcEncrypt, _srcTrust;
+    private readonly TextBox _tgtServer, _tgtPort, _tgtUser, _tgtPass;
+    private readonly CheckBox _tgtEncrypt, _tgtTrust;
+    private readonly StackPanel _dbPanel;
+    private readonly List<DbRowControls> _dbRows = [];
+
+    private record DbRowControls(TextBox Source, TextBox Target, TextBox Filter, TextBox TenantId, TextBox Comment);
+
+    public ConfigEditorDialog(NamedConfig? existing = null)
+    {
+        Title = existing == null ? "New Config" : "Edit Config";
+        Width = 640;
+        Height = 680;
+        CanResize = true;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = new SolidColorBrush(Color.Parse("#1e1e2e"));
+
+        // ── helpers ──────────────────────────────────────────────────────────
+        TextBox MakeBox(string watermark, string? val = null) => new()
+        {
+            Watermark = watermark,
+            Text = val ?? "",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 6),
+            FontSize = 12,
+        };
+
+        CheckBox MakeCheck(string label, bool val) => new()
+        {
+            Content = label,
+            IsChecked = val,
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            FontSize = 12,
+        };
+
+        TextBlock MakeLabel(string text, string? color = null) => new()
+        {
+            Text = text,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(Color.Parse(color ?? "#6c7086")),
+            Margin = new Thickness(0, 8, 0, 4),
+        };
+
+        Border MakeSection(string title, Control content) => new()
+        {
+            Background = new SolidColorBrush(Color.Parse("#181825")),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(14),
+            Margin = new Thickness(0, 0, 0, 10),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    MakeLabel(title, "#89b4fa"),
+                    content,
+                }
+            }
+        };
+
+        StackPanel MakeConnFields(
+            out TextBox server, out TextBox port, out TextBox user,
+            out TextBox pass, out CheckBox encrypt, out CheckBox trust,
+            ConnectionConfig? c = null)
+        {
+            server = MakeBox("Server / IP", c?.Server);
+            port = MakeBox("Port", c?.Port.ToString() ?? "1433");
+            user = MakeBox("Username", c?.Username);
+            pass = MakeBox("Password", c?.Password);
+            encrypt = MakeCheck("Encrypt", c?.Encrypt ?? false);
+            trust = MakeCheck("Trust Server Certificate", c?.TrustServerCertificate ?? true);
+
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+            Grid.SetColumn(server, 0); Grid.SetColumn(port, 1);
+            port.Width = 80;
+            grid.Children.Add(server); grid.Children.Add(port);
+
+            return new StackPanel
+            {
+                Spacing = 6,
+                Children = { grid, user, pass, encrypt, trust }
+            };
+        }
+
+        // ── fields ───────────────────────────────────────────────────────────
+        _nameBox = MakeBox("e.g. UNFI Staging", existing?.Name);
+
+        var srcPanel = MakeConnFields(out _srcServer, out _srcPort, out _srcUser, out _srcPass,
+            out _srcEncrypt, out _srcTrust, existing?.Config.Source);
+        var tgtPanel = MakeConnFields(out _tgtServer, out _tgtPort, out _tgtUser, out _tgtPass,
+            out _tgtEncrypt, out _tgtTrust, existing?.Config.Target);
+
+        _dbPanel = new StackPanel { Spacing = 6 };
+
+        var addDbBtn = new Button
+        {
+            Content = "+ Add Database",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#89b4fa")),
+            FontSize = 12,
+            Padding = new Thickness(10, 6),
+        };
+        addDbBtn.Click += (_, _) => AddDbRow();
+
+        // Populate existing databases
+        if (existing?.Config.Databases is { Count: > 0 } dbs)
+            foreach (var db in dbs) AddDbRow(db);
+        else
+            AddDbRow();
+
+        // ── buttons ───────────────────────────────────────────────────────────
+        var cancelBtn = new Button
+        {
+            Content = "Cancel",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            Padding = new Thickness(16, 8),
+            FontSize = 12,
+        };
+        cancelBtn.Click += (_, _) => Close(null);
+
+        var saveBtn = new Button
+        {
+            Content = "Save",
+            Background = new SolidColorBrush(Color.Parse("#89b4fa")),
+            Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
+            FontWeight = FontWeight.SemiBold,
+            Padding = new Thickness(16, 8),
+            FontSize = 12,
+        };
+        saveBtn.Click += OnSave;
+
+        var btnRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 10,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children = { cancelBtn, saveBtn },
+        };
+
+        // ── layout ────────────────────────────────────────────────────────────
+        var scroll = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(20),
+                Spacing = 0,
+                Children =
+                {
+                    MakeLabel("CONFIG NAME", "#6c7086"),
+                    _nameBox,
+                    MakeSection("SOURCE CONNECTION", srcPanel),
+                    MakeSection("TARGET CONNECTION", tgtPanel),
+                    MakeSection("DATABASES", new StackPanel
+                    {
+                        Spacing  = 8,
+                        Children = { _dbPanel, addDbBtn },
+                    }),
+                    btnRow,
+                }
+            }
+        };
+
+        Content = scroll;
+    }
+
+    private void AddDbRow(DbEntry? db = null)
+    {
+        TextBox MakeBox(string wm, string? val = null) => new()
+        {
+            Watermark = wm,
+            Text = val ?? "",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 5),
+            FontSize = 12,
+        };
+
+        var srcBox = MakeBox("Source DB", db?.SourceDatabase);
+        var tgtBox = MakeBox("Target DB", db?.TargetDatabase);
+        var filterBox = MakeBox("Filter (all/tenant/explicit)", db?.TableFilter ?? "all");
+        var tenantBox = MakeBox("Tenant ID (if tenant filter)", db?.TenantId);
+        var commentBox = MakeBox("Comment (optional)", db?.Comment);
+
+        var removeBtn = new Button
+        {
+            Content = "✕",
+            Background = new SolidColorBrush(Color.Parse("#f38ba8")),
+            Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
+            Padding = new Thickness(8, 5),
+            FontSize = 11,
+            Width = 30,
+        };
+
+        var row = new DbRowControls(srcBox, tgtBox, filterBox, tenantBox, commentBox);
+        _dbRows.Add(row);
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,Auto"),
+            ColumnSpacing = 6,
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            RowSpacing = 4,
+        };
+
+        Grid.SetColumn(srcBox, 0); Grid.SetRow(srcBox, 0);
+        Grid.SetColumn(tgtBox, 1); Grid.SetRow(tgtBox, 0);
+        Grid.SetColumn(removeBtn, 2); Grid.SetRow(removeBtn, 0);
+        Grid.SetColumn(filterBox, 0); Grid.SetRow(filterBox, 1);
+        Grid.SetColumn(tenantBox, 1); Grid.SetRow(tenantBox, 1);
+        Grid.SetColumn(commentBox, 0); Grid.SetRow(commentBox, 2);
+        Grid.SetColumnSpan(commentBox, 2);
+
+        grid.Children.Add(srcBox);
+        grid.Children.Add(tgtBox);
+        grid.Children.Add(removeBtn);
+        grid.Children.Add(filterBox);
+        grid.Children.Add(tenantBox);
+        grid.Children.Add(commentBox);
+
+        var container = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(10),
+            Child = grid,
+        };
+
+        removeBtn.Click += (_, _) =>
+        {
+            _dbRows.Remove(row);
+            _dbPanel.Children.Remove(container);
+        };
+
+        _dbPanel.Children.Add(container);
+    }
+
+    private void OnSave(object? sender, RoutedEventArgs e)
+    {
+        var name = _nameBox.Text?.Trim();
+        if (string.IsNullOrEmpty(name)) { _nameBox.Focus(); return; }
+
+        int ParsePort(string? s) => int.TryParse(s, out var p) ? p : 1433;
+
+        var config = new MigrationConfig
+        {
+            Source = new ConnectionConfig
+            {
+                Server = _srcServer.Text?.Trim() ?? "",
+                Port = ParsePort(_srcPort.Text),
+                Username = _srcUser.Text?.Trim() ?? "",
+                Password = _srcPass.Text ?? "",
+                Encrypt = _srcEncrypt.IsChecked ?? false,
+                TrustServerCertificate = _srcTrust.IsChecked ?? true,
+            },
+            Target = new ConnectionConfig
+            {
+                Server = _tgtServer.Text?.Trim() ?? "",
+                Port = ParsePort(_tgtPort.Text),
+                Username = _tgtUser.Text?.Trim() ?? "",
+                Password = _tgtPass.Text ?? "",
+                Encrypt = _tgtEncrypt.IsChecked ?? false,
+                TrustServerCertificate = _tgtTrust.IsChecked ?? true,
+            },
+            Databases = _dbRows.Select(r => new DbEntry
+            {
+                SourceDatabase = r.Source.Text?.Trim() ?? "",
+                TargetDatabase = r.Target.Text?.Trim() ?? "",
+                TableFilter = r.Filter.Text?.Trim() is { Length: > 0 } f ? f : "all",
+                TenantId = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
+                Comment = r.Comment.Text?.Trim() is { Length: > 0 } c ? c : null,
+            }).Where(d => d.SourceDatabase.Length > 0).ToList(),
+        };
+
+        Close(new NamedConfig { Name = name, Config = config });
+    }
+}

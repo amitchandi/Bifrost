@@ -1,0 +1,267 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Bifrost.GUI.ViewModels"
+        xmlns:local="clr-namespace:Bifrost.GUI"
+        x:Class="Bifrost.GUI.Views.MainWindow"
+        Title="Bifrost"
+        Width="1200" Height="740"
+        MinWidth="900" MinHeight="500"
+        Background="#1e1e2e"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        Icon="avares://bifrost-gui/Assets/bifrost.ico">
+
+  <Window.Resources>
+    <local:LogLineColorConverter x:Key="LogLineColorConverter"/>
+  </Window.Resources>
+
+  <Window.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+      <Setter Property="BorderBrush" Value="#45475a"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="12,7"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#89b4fa"/>
+      <Setter Property="Foreground" Value="#1e1e2e"/>
+    </Style>
+    <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#45475a"/>
+      <Setter Property="TextElement.Foreground" Value="#6c7086"/>
+    </Style>
+    <Style Selector="Button.success">
+      <Setter Property="Background" Value="#a6e3a1"/>
+      <Setter Property="Foreground" Value="#1e1e2e"/>
+    </Style>
+    <Style Selector="Button.success:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#45475a"/>
+      <Setter Property="TextElement.Foreground" Value="#6c7086"/>
+    </Style>
+    <Style Selector="Button.ghost">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+    </Style>
+    <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#45475a"/>
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="#f38ba8"/>
+      <Setter Property="Foreground" Value="#1e1e2e"/>
+    </Style>
+    <Style Selector="Button.winbtn">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="#6c7086"/>
+      <Setter Property="Width" Value="40"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.winbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="TextElement.Foreground" Value="#cdd6f4"/>
+    </Style>
+    <Style Selector="Button.winbtn.close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f38ba8"/>
+      <Setter Property="TextElement.Foreground" Value="#1e1e2e"/>
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="CornerRadius" Value="4"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="#313244"/>
+    </Style>
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2a2a3e"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="32,*">
+
+    <!-- ── Title bar ─────────────────────────────────────────────── -->
+    <Border Grid.Row="0" Background="#11111b">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+
+        <!-- Icon + title -->
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8"
+                    VerticalAlignment="Center" Margin="12,0">
+          <Image Source="avares://bifrost-gui/Assets/bifrost.ico" Width="16" Height="16"/>
+          <TextBlock Text="Bifrost" FontSize="13" FontWeight="SemiBold"
+                     Foreground="#89b4fa" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Drag area -->
+        <Panel Grid.Column="1" Background="Transparent"
+               PointerPressed="OnTitleBarDrag"/>
+
+        <!-- Window controls -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Stretch">
+          <Button Classes="winbtn" Content="─" Click="OnMinimize"/>
+          <Button Classes="winbtn" Content="□" Click="OnMaximize"/>
+          <Button Classes="winbtn close" Content="✕" Click="OnCloseToTray"/>
+        </StackPanel>
+
+      </Grid>
+    </Border>
+
+    <!-- ── Main content ───────────────────────────────────────────── -->
+    <Grid Grid.Row="1" ColumnDefinitions="240,220,*">
+
+      <!-- ── Col 0: Config list ──────────────────────────────────── -->
+      <Border Grid.Column="0" Background="#11111b" Padding="14">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,12">
+            <Rectangle Height="1" Fill="#1e1e2e"/>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="CONFIGS" FontSize="10" FontWeight="SemiBold"
+                         Foreground="#6c7086" LetterSpacing="1" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Content="+" Classes="primary"
+                      Padding="8,4" FontSize="13"
+                      ToolTip.Tip="New config"
+                      Click="OnNewConfig"/>
+            </Grid>
+          </StackPanel>
+
+          <ListBox Name="ConfigList"
+                   ItemsSource="{Binding Configs}"
+                   SelectedItem="{Binding SelectedConfig}"
+                   Background="Transparent"
+                   BorderThickness="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Name}"
+                           FontSize="13"
+                           TextTrimming="CharacterEllipsis"/>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <!-- ── Col 1: Config detail + actions ─────────────────────── -->
+      <Border Grid.Column="1" Background="#181825" Padding="16">
+        <StackPanel Spacing="14">
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="SELECTED CONFIG" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#6c7086" LetterSpacing="1"/>
+            <Border Background="#313244" CornerRadius="6" Padding="12" MinHeight="80">
+              <TextBlock Text="{Binding ConfigSummary}"
+                         FontSize="11"
+                         Foreground="#bac2de"
+                         TextWrapping="Wrap"
+                         FontFamily="Cascadia Code,Consolas,monospace"/>
+            </Border>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="6" IsVisible="{Binding HasConfig}">
+              <Button Grid.Column="0" Classes="ghost" Content="Edit"
+                      HorizontalAlignment="Stretch"
+                      IsEnabled="{Binding IsNotBusy}"
+                      Click="OnEditConfig"/>
+              <Button Grid.Column="1" Classes="danger" Content="Delete"
+                      HorizontalAlignment="Stretch"
+                      IsEnabled="{Binding IsNotBusy}"
+                      Click="OnDeleteConfig"/>
+            </Grid>
+          </StackPanel>
+
+          <Rectangle Height="1" Fill="#313244"/>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="OUTPUT DIRECTORY" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#6c7086" LetterSpacing="1"/>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <TextBox Grid.Column="0" Text="{Binding OutputDir}" Watermark="output"/>
+              <Button  Grid.Column="1" Classes="ghost" Content="…" Click="OnBrowseOutput"/>
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <CheckBox IsChecked="{Binding UseBulk}" IsEnabled="{Binding IsNotBusy}"/>
+            <StackPanel>
+              <TextBlock Text="SqlBulkCopy" FontSize="12"/>
+              <TextBlock Text="for direct migration" FontSize="10" Foreground="#6c7086"/>
+            </StackPanel>
+          </StackPanel>
+
+          <Rectangle Height="1" Fill="#313244"/>
+
+          <StackPanel Spacing="8">
+            <TextBlock Text="ACTIONS" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#6c7086" LetterSpacing="1"/>
+            <Button Classes="primary" Content="⬆  Export"
+                    HorizontalAlignment="Stretch"
+                    IsEnabled="{Binding IsNotBusy}"
+                    Click="OnExport"/>
+            <Button Classes="ghost" Content="⬇  Import"
+                    HorizontalAlignment="Stretch"
+                    IsEnabled="{Binding IsNotBusy}"
+                    Click="OnImport"/>
+            <Button Classes="success" Content="⚡  Direct Migration"
+                    HorizontalAlignment="Stretch"
+                    IsEnabled="{Binding IsNotBusy}"
+                    Click="OnDirect"/>
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
+            <TextBlock Text="⏳" FontSize="13"/>
+            <TextBlock Text="Running..." FontSize="12" Foreground="#f9e2af" VerticalAlignment="Center"/>
+          </StackPanel>
+
+        </StackPanel>
+      </Border>
+
+      <!-- ── Col 2: Log output ──────────────────────────────────── -->
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <Border Grid.Row="0" Background="#181825" Padding="14,10"
+                BorderBrush="#313244" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="LOG OUTPUT" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#6c7086" LetterSpacing="1" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Classes="ghost" Content="Clear"
+                    Padding="10,4" FontSize="11" Click="OnClearLog"/>
+          </Grid>
+        </Border>
+        <ScrollViewer Grid.Row="1" Name="LogScroller"
+                      Background="#1e1e2e"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      Padding="16">
+          <ItemsControl ItemsSource="{Binding LogLines}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}"
+                           FontFamily="Cascadia Code,Consolas,monospace"
+                           FontSize="12"
+                           Foreground="{Binding Converter={StaticResource LogLineColorConverter}}"
+                           TextWrapping="NoWrap"
+                           Margin="0,1"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+
+    </Grid>
+  </Grid>
+</Window>

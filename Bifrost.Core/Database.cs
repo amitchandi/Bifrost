@@ -1,6 +1,6 @@
 using Microsoft.Data.SqlClient;
 
-namespace Bifrost;
+namespace Bifrost.Core;
 
 public static class Database
 {
@@ -47,7 +47,6 @@ public static class Database
     public static List<ColumnInfo> GetColumns(SqlConnection conn, string schema, string table)
     {
         var columns = new List<ColumnInfo>();
-
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
             SELECT
@@ -96,41 +95,29 @@ public static class Database
                 IsPrimaryKey = reader.GetInt32(8) == 1,
             });
         }
-
         return columns;
     }
 
     public static void StreamRows(
-        SqlConnection conn,
-        string schema,
-        string table,
-        string columns,
-        string? whereClause,
-        Action<SqlDataReader> onRow)
+        SqlConnection conn, string schema, string table,
+        string columns, string? whereClause, Action<SqlDataReader> onRow)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandTimeout = 300;
-
         cmd.CommandText = string.IsNullOrEmpty(whereClause)
-            ? $"SELECT {columns} FROM [{schema}].[{table}]"
+            ? $"SELECT {columns} FROM [{schema}].[{table}] ORDER BY (SELECT NULL)"
             : $"SELECT {columns} FROM [{schema}].[{table}] WHERE {whereClause}";
-
         using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-            onRow(reader);
+        while (reader.Read()) onRow(reader);
     }
 
-    public static void StreamCustomQuery(
-        SqlConnection conn,
-        string query,
-        Action<SqlDataReader> onRow)
+    public static void StreamCustomQuery(SqlConnection conn, string query, Action<SqlDataReader> onRow)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandTimeout = 300;
         cmd.CommandText = query;
         using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-            onRow(reader);
+        while (reader.Read()) onRow(reader);
     }
 
     public static void ExecuteBatch(SqlConnection conn, string sql)
@@ -148,5 +135,13 @@ public static class Database
         cmd.CommandTimeout = 300;
         cmd.CommandText = sql;
         cmd.ExecuteNonQuery();
+    }
+
+    public static void EnsureDatabase(ConnectionConfig conn, string database)
+    {
+        using var master = Open(conn, "master");
+        ExecuteBatch(master,
+            $"IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'{database}') " +
+            $"CREATE DATABASE [{database}]");
     }
 }

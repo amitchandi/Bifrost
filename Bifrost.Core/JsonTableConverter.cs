@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Bifrost;
+namespace Bifrost.Core;
 
 public class JsonTableConverter : JsonConverter<JsonTable>
 {
