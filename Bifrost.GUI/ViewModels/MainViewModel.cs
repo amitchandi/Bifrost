@@ -104,7 +104,7 @@ public class MainViewModel : INotifyPropertyChanged
         PersistConfigs();
     }
 
-    private void PersistConfigs() => ConfigStore.Save(Configs.ToList());
+    private void PersistConfigs() => ConfigStore.Save([.. Configs]);
 
     // ── Logging ───────────────────────────────────────────────────────────────
 
@@ -145,12 +145,27 @@ public class MainViewModel : INotifyPropertyChanged
 
     private static void PlayDone(bool success)
     {
-        try
+        Task.Run(() =>
         {
-            if (success) { Console.Beep(440, 120); Console.Beep(550, 180); }
-            else { Console.Beep(300, 250); Console.Beep(220, 350); }
-        }
-        catch { }
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    if (success) { Console.Beep(440, 120); Console.Beep(550, 180); }
+                    else { Console.Beep(300, 250); Console.Beep(220, 350); }
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    // Use paplay with a system sound if available, fallback to bell
+                    var sound = success
+                        ? "/usr/share/sounds/freedesktop/stereo/complete.oga"
+                        : "/usr/share/sounds/freedesktop/stereo/dialog-error.oga";
+                    if (File.Exists(sound))
+                        System.Diagnostics.Process.Start("paplay", sound)?.WaitForExit(2000);
+                }
+            }
+            catch { }
+        });
     }
 
     // ── INotifyPropertyChanged ────────────────────────────────────────────────
