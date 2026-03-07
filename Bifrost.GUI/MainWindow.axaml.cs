@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Bifrost.Core;
 using Bifrost.GUI.ViewModels;
 
 namespace Bifrost.GUI.Views;
@@ -18,8 +19,11 @@ public partial class MainWindow : Window
 
         _vm.LogLines.CollectionChanged += (_, _) =>
         {
-            var scroller = this.FindControl<ScrollViewer>("LogScroller");
-            scroller?.ScrollToEnd();
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                var scroller = this.FindControl<ScrollViewer>("LogScroller");
+                scroller?.ScrollToEnd();
+            }, Avalonia.Threading.DispatcherPriority.Background);
         };
     }
 
@@ -78,6 +82,12 @@ public partial class MainWindow : Window
 
     private void OnClearLog(object? sender, RoutedEventArgs e) => _vm.ClearLog();
 
+    private void OnDebugLog(object? sender, RoutedEventArgs e)
+    {
+        for (int i = 1; i <= 40; i++)
+            _vm.AppendLog($"    [{DateTime.Now:HH:mm:ss}] [OK] Fake log line {i} — simulating output from a long running migration");
+    }
+
     // ── Actions ───────────────────────────────────────────────────────────────
 
     private async void OnExport(object? sender, RoutedEventArgs e)
@@ -98,6 +108,12 @@ public partial class MainWindow : Window
         if (!await ConfirmRun(mode, "read from SOURCE and write directly to TARGET")) return;
         if (_vm.UseBulk) await _vm.RunBulk();
         else             await _vm.RunDirect();
+    }
+
+    private async void OnRestructure(object? sender, RoutedEventArgs e)
+    {
+        if (!await ConfirmRun("Restructure", "move tenant tables into named schemas on TARGET")) return;
+        await _vm.RunRestructure();
     }
 
     private async Task<bool> ConfirmRun(string action, string description)

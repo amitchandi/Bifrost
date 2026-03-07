@@ -47,6 +47,13 @@ public class MainViewModel : INotifyPropertyChanged
     }
     public bool IsNotBusy => !_isBusy;
 
+    private string _statusText = "Ready";
+    public string StatusText
+    {
+        get => _statusText;
+        set { _statusText = value; OnPropertyChanged(); }
+    }
+
     private string _outputDir = "output";
     public string OutputDir
     {
@@ -112,12 +119,14 @@ public class MainViewModel : INotifyPropertyChanged
     public async Task RunImport() => await RunOperation(() => Importer.Run(_selectedConfig!.Config, OutputDir));
     public async Task RunDirect() => await RunOperation(() => Migrator.Run(_selectedConfig!.Config, false));
     public async Task RunBulk() => await RunOperation(() => Migrator.Run(_selectedConfig!.Config, true));
+    public async Task RunRestructure() => await RunOperation(() => Restructurer.Run(_selectedConfig!.Config));
 
     private async Task RunOperation(Func<int> operation)
     {
         if (_selectedConfig == null || IsBusy) return;
         ClearLog();
         IsBusy = true;
+        StatusText = "Running...";
         Logger.SetHandler(AppendLog);
         int result = 0;
         try { result = await Task.Run(operation); }
@@ -125,6 +134,11 @@ public class MainViewModel : INotifyPropertyChanged
         finally
         {
             IsBusy = false;
+            StatusText = result == 0 ? "Completed successfully" : "Completed with errors";
+            AppendLog("");
+            AppendLog("");
+            AppendLog("");
+            AppendLog("");
             PlayDone(result == 0);
         }
     }

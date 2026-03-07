@@ -1,6 +1,6 @@
-﻿using Bifrost.Core;
+﻿using System.CommandLine;
 using System.Text.Json;
-using System.CommandLine;
+using Bifrost.Core;
 
 Logger.UseConsole();
 
@@ -72,8 +72,20 @@ directCmd.SetHandler((config, bulk) =>
     Environment.Exit(Migrator.Run(cfg, bulk));
 }, directConfig, directBulk);
 
+// ── restructure ──────────────────────────────────────────────────────────────
+var restructureCmd = new Command("restructure", "Move tenant tables into named schemas and strip tenant ID from table names");
+var restructureConfig = new Option<string>("--config", () => "config.json", "Config file");
+restructureCmd.AddOption(restructureConfig);
+restructureCmd.SetHandler((config) =>
+{
+    var cfg = LoadConfig(config);
+    if (!Confirm(cfg, "restructure")) { Console.WriteLine("  Aborted."); return; }
+    Environment.Exit(Restructurer.Run(cfg));
+}, restructureConfig);
+
 rootCmd.AddCommand(exportCmd);
 rootCmd.AddCommand(importCmd);
 rootCmd.AddCommand(directCmd);
+rootCmd.AddCommand(restructureCmd);
 
 return await rootCmd.InvokeAsync(args);

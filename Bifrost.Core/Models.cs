@@ -52,6 +52,7 @@ public class MigrationConfig
     [JsonPropertyName("source")] public ConnectionConfig Source { get; set; } = new();
     [JsonPropertyName("target")] public ConnectionConfig Target { get; set; } = new();
     [JsonPropertyName("databases")] public List<DbEntry> Databases { get; set; } = [];
+    [JsonPropertyName("tenants")] public List<TenantEntry> Tenants { get; set; } = [];
 }
 
 public class TableRef
@@ -88,4 +89,13 @@ public class Manifest
     public string ExportedAt { get; set; } = "";
     public string Server { get; set; } = "";
     public List<ManifestDb> Databases { get; set; } = [];
+}
+
+public class TenantEntry
+{
+    [JsonPropertyName("tenantId")] public string TenantId { get; set; } = "";
+    [JsonPropertyName("schema")] public string Schema { get; set; } = "";
+    [JsonPropertyName("database")] public string Database { get; set; } = "";
+    [JsonPropertyName("sourceSchema")] public string? SourceSchema { get; set; }
+    [JsonPropertyName("createCompatibilityViews")] public bool CreateCompatibilityViews { get; set; } = false;
 }

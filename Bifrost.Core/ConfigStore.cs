@@ -1,8 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
-using Bifrost.Core;
 
-namespace Bifrost.GUI;
+namespace Bifrost.Core;
 
 public class NamedConfig
 {

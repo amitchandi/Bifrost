@@ -1,4 +1,4 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -15,9 +15,12 @@ public class ConfigEditorDialog : Window
     private readonly TextBox _tgtServer, _tgtPort, _tgtUser, _tgtPass;
     private readonly CheckBox _tgtEncrypt, _tgtTrust;
     private readonly StackPanel _dbPanel;
+    private readonly StackPanel _tenantPanel;
+    private readonly List<TenantRowControls> _tenantRows = [];
     private readonly List<DbRowControls> _dbRows = [];
 
     private record DbRowControls(TextBox Source, TextBox Target, TextBox Filter, TextBox TenantId, TextBox Comment);
+    private record TenantRowControls(TextBox TenantId, TextBox Schema, TextBox Database, CheckBox CompatViews, TextBox SourceSchema);
 
     public ConfigEditorDialog(NamedConfig? existing = null)
     {
@@ -109,6 +112,20 @@ public class ConfigEditorDialog : Window
             out _tgtEncrypt, out _tgtTrust, existing?.Config.Target);
 
         _dbPanel = new StackPanel { Spacing = 6 };
+        _tenantPanel = new StackPanel { Spacing = 6 };
+
+        var addTenantBtn = new Button
+        {
+            Content = "+ Add Tenant",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#cba6f7")),
+            FontSize = 12,
+            Padding = new Thickness(10, 6),
+        };
+        addTenantBtn.Click += (_, _) => AddTenantRow();
+
+        if (existing?.Config.Tenants is { Count: > 0 } tenants)
+            foreach (var t in tenants) AddTenantRow(t);
 
         var addDbBtn = new Button
         {
@@ -170,6 +187,11 @@ public class ConfigEditorDialog : Window
                     _nameBox,
                     MakeSection("SOURCE CONNECTION", srcPanel),
                     MakeSection("TARGET CONNECTION", tgtPanel),
+                    MakeSection("TENANTS (for restructure)", new StackPanel
+                    {
+                        Spacing  = 8,
+                        Children = { _tenantPanel, addTenantBtn },
+                    }),
                     MakeSection("DATABASES", new StackPanel
                     {
                         Spacing  = 8,
@@ -257,6 +279,86 @@ public class ConfigEditorDialog : Window
         _dbPanel.Children.Add(container);
     }
 
+    private void AddTenantRow(TenantEntry? t = null)
+    {
+        TextBox MakeBox(string wm, string? val = null) => new()
+        {
+            Watermark = wm,
+            Text = val ?? "",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 5),
+            FontSize = 12,
+        };
+
+        var tenantIdBox = MakeBox("Tenant ID (e.g. 142)", t?.TenantId);
+        var schemaBox = MakeBox("New schema name (e.g. WarehouseCo)", t?.Schema);
+        var dbBox = MakeBox("Database", t?.Database);
+        var sourceSchemaBox = MakeBox("Source schema (optional, skips suffix stripping)", t?.SourceSchema);
+        var compatCheck = new CheckBox
+        {
+            Content = "Create compatibility views",
+            IsChecked = t?.CreateCompatibilityViews ?? false,
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            FontSize = 12,
+        };
+
+        var removeBtn = new Button
+        {
+            Content = "✕",
+            Background = new SolidColorBrush(Color.Parse("#f38ba8")),
+            Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
+            Padding = new Thickness(8, 5),
+            FontSize = 11,
+            Width = 30,
+        };
+
+        var row = new TenantRowControls(tenantIdBox, schemaBox, dbBox, compatCheck, sourceSchemaBox);
+        _tenantRows.Add(row);
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,Auto"),
+            ColumnSpacing = 6,
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            RowSpacing = 4,
+        };
+
+        Grid.SetColumn(tenantIdBox, 0); Grid.SetRow(tenantIdBox, 0);
+        Grid.SetColumn(schemaBox, 1); Grid.SetRow(schemaBox, 0);
+        Grid.SetColumn(removeBtn, 2); Grid.SetRow(removeBtn, 0);
+        Grid.SetColumn(dbBox, 0); Grid.SetRow(dbBox, 1);
+        Grid.SetColumn(compatCheck, 1); Grid.SetRow(compatCheck, 1);
+        Grid.SetColumn(sourceSchemaBox, 0); Grid.SetRow(sourceSchemaBox, 2);
+        Grid.SetColumnSpan(sourceSchemaBox, 2);
+
+        grid.Children.Add(tenantIdBox);
+        grid.Children.Add(schemaBox);
+        grid.Children.Add(removeBtn);
+        grid.Children.Add(dbBox);
+        grid.Children.Add(compatCheck);
+        grid.Children.Add(sourceSchemaBox);
+
+        var container = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(10),
+            Child = grid,
+        };
+
+        removeBtn.Click += (_, _) =>
+        {
+            _tenantRows.Remove(row);
+            _tenantPanel.Children.Remove(container);
+        };
+
+        _tenantPanel.Children.Add(container);
+    }
+
     private void OnSave(object? sender, RoutedEventArgs e)
     {
         var name = _nameBox.Text?.Trim();
@@ -292,6 +394,14 @@ public class ConfigEditorDialog : Window
                 TenantId = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
                 Comment = r.Comment.Text?.Trim() is { Length: > 0 } c ? c : null,
             }).Where(d => d.SourceDatabase.Length > 0).ToList(),
+            Tenants = _tenantRows.Select(r => new TenantEntry
+            {
+                TenantId = r.TenantId.Text?.Trim() ?? "",
+                Schema = r.Schema.Text?.Trim() ?? "",
+                Database = r.Database.Text?.Trim() ?? "",
+                SourceSchema = r.SourceSchema.Text?.Trim() is { Length: > 0 } ss ? ss : null,
+                CreateCompatibilityViews = r.CompatViews.IsChecked ?? false,
+            }).Where(t => t.TenantId.Length > 0 || t.SourceSchema != null).ToList(),
         };
 
         Close(new NamedConfig { Name = name, Config = config });
