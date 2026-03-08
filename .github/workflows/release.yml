@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*'
+      - 'v*.*.*'
 
 jobs:
   test:
@@ -67,7 +67,7 @@ jobs:
         run: |
           mkdir -p dist
           cd publish/${{ matrix.rid }}
-          cp ../../config.example.json .
+          cp ../../Bifrost.CLI/config.example.json .
           zip -r ../../dist/bifrost-${{ github.ref_name }}-${{ matrix.suffix }}-x64.zip cli gui config.example.json
 
       - name: Upload artifact
