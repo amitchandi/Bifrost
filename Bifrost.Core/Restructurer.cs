@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 
 namespace Bifrost.Core;
@@ -19,8 +19,8 @@ public static class Restructurer
             return 1;
         }
 
-        var sw = Stopwatch.StartNew();
-        int totalOk = 0;
+        var sw        = Stopwatch.StartNew();
+        int totalOk   = 0;
         int totalFail = 0;
 
         foreach (var tenant in config.Tenants)
@@ -45,24 +45,71 @@ public static class Restructurer
                     : GetTenantTables(conn, tenant.TenantId);
                 Logger.Log($"    Tables found: {tables.Count}");
 
+                // ── Conflict detection ────────────────────────────────────────
+                var conflicts = new List<string>();
                 foreach (var (schema, oldName) in tables)
                 {
                     var newName = effectiveSource != null
                         ? oldName
                         : StripSuffix(oldName, tenant.TenantId);
+
+                    if (!oldName.Equals(newName, StringComparison.OrdinalIgnoreCase)
+                        && TableExists(conn, tenant.Schema, newName))
+                        conflicts.Add($"[{tenant.Schema}].[{newName}] (from [{schema}].[{oldName}])");
+                }
+
+                if (conflicts.Count > 0)
+                {
+                    Logger.Log($"    [FAIL] Conflict detected — the following target tables already exist:");
+                    foreach (var c in conflicts) Logger.Log($"       {c}");
+                    Logger.Log($"    Aborting tenant {tenant.TenantId} to prevent data loss.");
+                    totalFail += tables.Count;
+                    continue;
+                }
+
+                // ── Execute with rollback log ─────────────────────────────────
+                var rollbackLog = new List<(string OldSchema, string OldName, string NewSchema, string NewName)>();
+
+                foreach (var (schema, oldName) in tables)
+                {
+                    var newName = effectiveSource != null
+                        ? oldName
+                        : StripSuffix(oldName, tenant.TenantId);
+
                     Logger.Log($"    [{DateTime.Now:HH:mm:ss}] -> [{schema}].[{oldName}] => [{tenant.Schema}].[{newName}]...");
 
                     try
                     {
                         RestructureTable(conn, schema, oldName, tenant.Schema, newName,
                             tenant.CreateCompatibilityViews);
+                        rollbackLog.Add((schema, oldName, tenant.Schema, newName));
                         Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [OK]");
                         totalOk++;
                     }
                     catch (Exception ex)
                     {
                         Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [FAIL] {ex.Message}");
+                        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [WARN] Attempting rollback of {rollbackLog.Count} completed tables...");
+
+                        // Roll back completed tables in reverse order
+                        foreach (var (rs, rOld, rNew, rNewName) in Enumerable.Reverse(rollbackLog))
+                        {
+                            try
+                            {
+                                // Reverse: move back and rename back
+                                if (!rOld.Equals(rNewName, StringComparison.OrdinalIgnoreCase))
+                                    Database.ExecuteBatch(conn, $"EXEC sp_rename N'{rNew}.{rNewName}', N'{rOld}', N'OBJECT'");
+                                Database.ExecuteBatch(conn, $"ALTER SCHEMA [{rs}] TRANSFER [{rNew}].[{rOld}]");
+                                Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [WARN] Rolled back [{rNew}].[{rNewName}] -> [{rs}].[{rOld}]");
+                            }
+                            catch (Exception rex)
+                            {
+                                Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [FAIL] Rollback failed for [{rNew}].[{rNewName}]: {rex.Message}");
+                            }
+                        }
+
                         totalFail++;
+                        break;
                     }
                 }
             }
@@ -90,27 +137,26 @@ public static class Restructurer
         string newSchema, string newName,
         bool createCompatView)
     {
-        // 1. Transfer to new schema (keeps old name temporarily)
         Database.ExecuteBatch(conn,
             $"ALTER SCHEMA [{newSchema}] TRANSFER [{oldSchema}].[{oldName}]");
 
-        // 2. Rename to strip tenant suffix
         if (!oldName.Equals(newName, StringComparison.OrdinalIgnoreCase))
-        {
-            if (TableExists(conn, newSchema, newName))
-                throw new Exception($"Cannot rename: [{newSchema}].[{newName}] already exists");
             Database.ExecuteBatch(conn,
                 $"EXEC sp_rename N'{newSchema}.{oldName}', N'{newName}', N'OBJECT'");
-        }
 
-        // 3. Optionally create compatibility view in original schema
         if (createCompatView)
-        {
             Database.ExecuteBatch(conn,
                 $"IF OBJECT_ID(N'[{oldSchema}].[{oldName}]', N'V') IS NOT NULL " +
                 $"DROP VIEW [{oldSchema}].[{oldName}]; " +
                 $"EXEC('CREATE VIEW [{oldSchema}].[{oldName}] AS SELECT * FROM [{newSchema}].[{newName}]')");
-        }
+    }
+
+    private static bool TableExists(SqlConnection conn, string schema, string name)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLES " +
+                          $"WHERE TABLE_SCHEMA = '{schema}' AND TABLE_NAME = '{name}' AND TABLE_TYPE = 'BASE TABLE'";
+        return (int)cmd.ExecuteScalar()! > 0;
     }
 
     private static List<(string Schema, string Name)> GetSchemaTable(SqlConnection conn, string schema)
@@ -148,16 +194,8 @@ public static class Restructurer
         return tables;
     }
 
-    private static bool TableExists(SqlConnection conn, string schema, string name)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '{schema}' AND TABLE_NAME = '{name}' AND TABLE_TYPE = 'BASE TABLE'";
-        return (int)cmd.ExecuteScalar()! > 0;
-    }
-
     private static string StripSuffix(string tableName, string tenantId)
     {
-        // Try _142 first, then bare 142
         var withUnderscore = $"_{tenantId}";
         if (tableName.EndsWith(withUnderscore, StringComparison.OrdinalIgnoreCase))
             return tableName[..^withUnderscore.Length];

@@ -7,13 +7,11 @@
   </Application.Styles>
   <Application.Resources>
     <local:LogLineColorConverter x:Key="LogLineColorConverter"/>
+    <local:BoolToColorConverter x:Key="BoolToColorConverter"/>
   </Application.Resources>
   <TrayIcon.Icons>
     <TrayIcons>
-      <TrayIcon
-        ToolTipText="Bifrost"
-        Command="{x:Static local:App.ShowWindowCommand}"
-        Icon="avares://bifrost-gui/Assets/bifrost.ico">
+      <TrayIcon ToolTipText="Bifrost" Icon="avares://bifrost-gui/Assets/bifrost.ico" Command="{x:Static local:App.ShowWindowCommand}">
         <TrayIcon.Menu>
           <NativeMenu>
             <NativeMenuItem Header="Show Bifrost" Command="{x:Static local:App.ShowWindowCommand}"/>
@@ -21,8 +19,7 @@
             <NativeMenuItem Header="Quit" Command="{x:Static local:App.QuitCommand}"/>
           </NativeMenu>
         </TrayIcon.Menu>
-      </TrayIcon
->
+      </TrayIcon>
     </TrayIcons>
   </TrayIcon.Icons>
 </Application>

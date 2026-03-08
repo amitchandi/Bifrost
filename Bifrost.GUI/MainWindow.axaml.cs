@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -41,6 +42,50 @@ public partial class MainWindow : Window
 
     private void OnCloseToTray(object? sender, RoutedEventArgs e)
         => Hide();
+
+    // ── Config import / export ───────────────────────────────────────────────
+
+    private async void OnImportConfig(object? sender, RoutedEventArgs e)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Config",
+            FileTypeFilter = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }],
+        });
+        if (files.Count == 0) return;
+
+        try
+        {
+            var json   = await File.ReadAllTextAsync(files[0].Path.LocalPath);
+            var config = JsonSerializer.Deserialize<MigrationConfig>(json)
+                ?? throw new Exception("Invalid config file");
+            var name   = Path.GetFileNameWithoutExtension(files[0].Path.LocalPath);
+            _vm.AddOrUpdateConfig(new NamedConfig { Name = name, Config = config });
+        }
+        catch (Exception ex)
+        {
+            await new ConfirmDialog("Import Failed", ex.Message, new MigrationConfig())
+                .ShowDialog<bool>(this);
+        }
+    }
+
+    private async void OnExportConfig(object? sender, RoutedEventArgs e)
+    {
+        var btn = (Button)sender!;
+        var named = btn.DataContext as NamedConfig;
+        if (named == null) return;
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title           = "Export Config",
+            SuggestedFileName = $"{named.Name}.json",
+            FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }],
+        });
+        if (file == null) return;
+
+        var json = JsonSerializer.Serialize(named.Config, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(file.Path.LocalPath, json);
+    }
 
     // ── Config management ─────────────────────────────────────────────────────
 

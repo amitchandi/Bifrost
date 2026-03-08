@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Test
+        run: dotnet test Bifrost.Tests/Bifrost.Tests.csproj --no-restore --verbosity normal
+
+  build:
+    name: Build (${{ matrix.rid }})
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            suffix: windows
+          - rid: linux-x64
+            suffix: linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish CLI
+        run: |
+          dotnet publish Bifrost.CLI/Bifrost.CLI.csproj \
+            -r ${{ matrix.rid }} \
+            -c Release \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o publish/${{ matrix.rid }}/cli
+
+      - name: Publish GUI
+        run: |
+          dotnet publish Bifrost.GUI/Bifrost.GUI.csproj \
+            -r ${{ matrix.rid }} \
+            -c Release \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o publish/${{ matrix.rid }}/gui
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cd publish/${{ matrix.rid }}
+          cp ../../config.example.json .
+          zip -r ../../dist/bifrost-${{ github.ref_name }}-${{ matrix.suffix }}-x64.zip cli gui config.example.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bifrost-${{ matrix.suffix }}-x64
+          path: dist/bifrost-${{ github.ref_name }}-${{ matrix.suffix }}-x64.zip
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Bifrost ${{ github.ref_name }}
+          body: |
+            ## Bifrost ${{ github.ref_name }}
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Windows x64 | `bifrost-${{ github.ref_name }}-windows-x64.zip` |
+            | Linux x64   | `bifrost-${{ github.ref_name }}-linux-x64.zip`   |
+
+            Each archive contains:
+            - `cli/bifrost` — command line tool
+            - `gui/bifrost-gui` — desktop app
+            - `config.example.json` — example config
+
+            ### Usage
+            See [README](https://github.com/${{ github.repository }}/blob/main/README.md) for full documentation.
+          files: |
+            dist/bifrost-windows-x64/bifrost-${{ github.ref_name }}-windows-x64.zip
+            dist/bifrost-linux-x64/bifrost-${{ github.ref_name }}-linux-x64.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
