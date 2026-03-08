@@ -32,7 +32,7 @@ public class ConfigStoreTests
         [
             new DbEntry
             {
-                SourceDatabase = "UNFI",
+                SourceDatabase = "MainAppDB_Prod",
                 TargetDatabase = "MainAppDB_Staging",
                 TableFilter    = "tenant",
                 TenantId       = "142",
