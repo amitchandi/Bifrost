@@ -127,6 +127,6 @@ public class SqlBuilderTests
             new() { ColName = "Id", DataType = "int", IsNullable = false }
         };
         var sql = SqlBuilder.BuildCreateTable("dbo", "Test", cols);
-        Assert.EndsWith("GO\r\n", sql);
+        Assert.EndsWith("GO" + Environment.NewLine, sql);
     }
 }
