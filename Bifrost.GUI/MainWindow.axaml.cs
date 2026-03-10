@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Bifrost.Core;
 using Bifrost.GUI.ViewModels;
+using Avalonia.Controls;
 
 namespace Bifrost.GUI.Views;
 
@@ -123,15 +124,21 @@ public partial class MainWindow : Window
         if (folder.Count > 0) _vm.OutputDir = folder[0].Path.LocalPath;
     }
 
+    // ── History ───────────────────────────────────────────────────────────────
+
+    private void OnViewAllHistory(object? sender, RoutedEventArgs e)
+        => new RunHistoryWindow(() => _vm.RefreshHistory()).Show();
+
+    private void OnViewRunLog(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.DataContext is RunRecord record)
+            new RunLogWindow(record).Show();
+    }
+
     // ── Log ───────────────────────────────────────────────────────────────────
 
     private void OnClearLog(object? sender, RoutedEventArgs e) => _vm.ClearLog();
 
-    private void OnDebugLog(object? sender, RoutedEventArgs e)
-    {
-        for (int i = 1; i <= 40; i++)
-            _vm.AppendLog($"    [{DateTime.Now:HH:mm:ss}] [OK] Fake log line {i} — simulating output from a long running migration");
-    }
 
     // ── Actions ───────────────────────────────────────────────────────────────
 

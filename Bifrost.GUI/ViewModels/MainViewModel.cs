@@ -121,10 +121,10 @@ public class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<RunRecord> History { get; } = [];
 
-    private void RefreshHistory()
+    public void RefreshHistory()
     {
         History.Clear();
-        foreach (var r in RunHistory.Load().Take(20))
+        foreach (var r in RunHistory.Load().Take(10))
             History.Add(r);
     }
 
@@ -158,7 +158,12 @@ public class MainViewModel : INotifyPropertyChanged
         Exporter.OnProgress  += onProgress;
         Importer.OnProgress  += onProgress;
         Migrator.OnProgress  += onProgress;
-        Logger.SetHandler(AppendLog);
+        var savedLines = new List<string>();
+        Logger.SetHandler(line =>
+        {
+            AppendLog(line);
+            if (RunHistory.ShouldSaveLine(line)) savedLines.Add(line);
+        });
 
         var sw     = Stopwatch.StartNew();
         int result = 0;
@@ -183,6 +188,7 @@ public class MainViewModel : INotifyPropertyChanged
                 StartedAt  = DateTime.Now.ToString("O"),
                 Duration   = sw.Elapsed.ToString(@"hh\:mm\:ss"),
                 Success    = result == 0,
+                Log        = savedLines,
             });
             RefreshHistory();
         }

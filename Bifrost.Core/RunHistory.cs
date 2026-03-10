@@ -5,15 +5,13 @@ namespace Bifrost.Core;
 
 public class RunRecord
 {
-    [JsonPropertyName("id")]         public string Id          { get; set; } = Guid.NewGuid().ToString();
-    [JsonPropertyName("configName")] public string ConfigName  { get; set; } = "";
-    [JsonPropertyName("operation")]  public string Operation   { get; set; } = "";
-    [JsonPropertyName("startedAt")]  public string StartedAt   { get; set; } = "";
-    [JsonPropertyName("duration")]   public string Duration    { get; set; } = "";
-    [JsonPropertyName("success")]    public bool   Success     { get; set; }
-    [JsonPropertyName("okCount")]    public int    OkCount     { get; set; }
-    [JsonPropertyName("failCount")]  public int    FailCount   { get; set; }
-    [JsonPropertyName("rowCount")]   public long   RowCount    { get; set; }
+    [JsonPropertyName("id")] public string Id { get; set; } = Guid.NewGuid().ToString();
+    [JsonPropertyName("configName")] public string ConfigName { get; set; } = "";
+    [JsonPropertyName("operation")] public string Operation { get; set; } = "";
+    [JsonPropertyName("startedAt")] public string StartedAt { get; set; } = "";
+    [JsonPropertyName("duration")] public string Duration { get; set; } = "";
+    [JsonPropertyName("success")] public bool Success { get; set; }
+    [JsonPropertyName("log")] public List<string> Log { get; set; } = [];
 }
 
 public static class RunHistory
@@ -22,6 +20,17 @@ public static class RunHistory
         AppContext.BaseDirectory, "bifrost-history.json");
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
+
+    /// <summary>
+    /// Returns true if a log line should be saved to history.
+    /// Skips SqlBulkCopy progress lines and blank lines.
+    /// </summary>
+    public static bool ShouldSaveLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        if (line.Contains("rows copied...")) return false;
+        return true;
+    }
 
     public static List<RunRecord> Load()
     {
@@ -33,12 +42,23 @@ public static class RunHistory
         catch { return []; }
     }
 
+    public static void Save(List<RunRecord> records)
+    {
+        File.WriteAllText(HistoryPath, JsonSerializer.Serialize(records, JsonOpts));
+    }
+
     public static void Append(RunRecord record)
     {
         var history = Load();
         history.Insert(0, record);
-        // Keep last 100 runs
         if (history.Count > 100) history = history.Take(100).ToList();
-        File.WriteAllText(HistoryPath, JsonSerializer.Serialize(history, JsonOpts));
+        Save(history);
+    }
+
+    public static void Delete(IEnumerable<string> ids)
+    {
+        var history = Load();
+        var idSet = ids.ToHashSet();
+        Save(history.Where(r => !idSet.Contains(r.Id)).ToList());
     }
 }

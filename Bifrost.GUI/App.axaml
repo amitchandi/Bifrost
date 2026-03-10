@@ -8,6 +8,7 @@
   <Application.Resources>
     <local:LogLineColorConverter x:Key="LogLineColorConverter"/>
     <local:BoolToColorConverter x:Key="BoolToColorConverter"/>
+    <local:DurationConverter x:Key="DurationConverter"/>
   </Application.Resources>
   <TrayIcon.Icons>
     <TrayIcons>

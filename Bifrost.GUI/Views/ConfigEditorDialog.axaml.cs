@@ -7,7 +7,7 @@ using Bifrost.Core;
 
 namespace Bifrost.GUI.Views;
 
-public class ConfigEditorDialog : Window
+public class ConfigEditorDialog : BifrostWindow
 {
     private readonly TextBox _nameBox;
     private readonly TextBox _srcServer, _srcPort, _srcUser, _srcPass;
@@ -30,51 +30,49 @@ public class ConfigEditorDialog : Window
 
     public ConfigEditorDialog(NamedConfig? existing = null)
     {
-        Title = existing == null ? "New Config" : "Edit Config";
-        Width = 680;
+        Title  = existing == null ? "New Config" : "Edit Config";
+        Width  = 680;
         Height = 720;
         CanResize = true;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.Parse("#1e1e2e"));
-
         // ── helpers ──────────────────────────────────────────────────────────
         TextBox MakeBox(string watermark, string? val = null) => new()
         {
-            Watermark = watermark,
-            Text = val ?? "",
-            Background = new SolidColorBrush(Color.Parse("#313244")),
-            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            Watermark       = watermark,
+            Text            = val ?? "",
+            Background      = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground      = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush     = new SolidColorBrush(Color.Parse("#45475a")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(8, 6),
-            FontSize = 12,
+            CornerRadius    = new CornerRadius(4),
+            Padding         = new Thickness(8, 6),
+            FontSize        = 12,
         };
 
         CheckBox MakeCheck(string label, bool val) => new()
         {
-            Content = label,
-            IsChecked = val,
+            Content    = label,
+            IsChecked  = val,
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            FontSize = 12,
+            FontSize   = 12,
         };
 
         TextBlock MakeLabel(string text, string? color = null) => new()
         {
-            Text = text,
-            FontSize = 11,
+            Text       = text,
+            FontSize   = 11,
             FontWeight = FontWeight.SemiBold,
             Foreground = new SolidColorBrush(Color.Parse(color ?? "#6c7086")),
-            Margin = new Thickness(0, 8, 0, 4),
+            Margin     = new Thickness(0, 8, 0, 4),
         };
 
         Border MakeSection(string title, Control content) => new()
         {
-            Background = new SolidColorBrush(Color.Parse("#181825")),
+            Background   = new SolidColorBrush(Color.Parse("#181825")),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(14),
-            Margin = new Thickness(0, 0, 0, 10),
-            Child = new StackPanel
+            Padding      = new Thickness(14),
+            Margin       = new Thickness(0, 0, 0, 10),
+            Child        = new StackPanel
             {
                 Spacing = 4,
                 Children = { MakeLabel(title, "#89b4fa"), content }
@@ -86,13 +84,13 @@ public class ConfigEditorDialog : Window
             out TextBox pass, out CheckBox encrypt, out CheckBox trust,
             ConnectionConfig? c = null)
         {
-            server = MakeBox("Server / IP", c?.Server);
-            port = MakeBox("Port", c?.Port.ToString() ?? "1433");
-            user = MakeBox("Username", c?.Username);
-            pass = MakeBox("Password", c?.Password);
+            server  = MakeBox("Server / IP", c?.Server);
+            port    = MakeBox("Port", c?.Port.ToString() ?? "1433");
+            user    = MakeBox("Username", c?.Username);
+            pass    = MakeBox("Password", c?.Password);
             pass.PasswordChar = '●';
             encrypt = MakeCheck("Encrypt", c?.Encrypt ?? false);
-            trust = MakeCheck("Trust Server Certificate", c?.TrustServerCertificate ?? true);
+            trust   = MakeCheck("Trust Server Certificate", c?.TrustServerCertificate ?? true);
 
             var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
             Grid.SetColumn(server, 0); Grid.SetColumn(port, 1);
@@ -110,16 +108,16 @@ public class ConfigEditorDialog : Window
         var tgtPanel = MakeConnFields(out _tgtServer, out _tgtPort, out _tgtUser, out _tgtPass,
             out _tgtEncrypt, out _tgtTrust, existing?.Config.Target);
 
-        _dbPanel = new StackPanel { Spacing = 6 };
+        _dbPanel     = new StackPanel { Spacing = 6 };
         _tenantPanel = new StackPanel { Spacing = 6 };
 
         var addTenantBtn = new Button
         {
-            Content = "+ Add Tenant",
+            Content    = "+ Add Tenant",
             Background = new SolidColorBrush(Color.Parse("#313244")),
             Foreground = new SolidColorBrush(Color.Parse("#cba6f7")),
-            FontSize = 12,
-            Padding = new Thickness(10, 6),
+            FontSize   = 12,
+            Padding    = new Thickness(10, 6),
         };
         addTenantBtn.Click += (_, _) => AddTenantRow();
 
@@ -128,11 +126,11 @@ public class ConfigEditorDialog : Window
 
         var addDbBtn = new Button
         {
-            Content = "+ Add Database",
+            Content    = "+ Add Database",
             Background = new SolidColorBrush(Color.Parse("#313244")),
             Foreground = new SolidColorBrush(Color.Parse("#89b4fa")),
-            FontSize = 12,
-            Padding = new Thickness(10, 6),
+            FontSize   = 12,
+            Padding    = new Thickness(10, 6),
         };
         addDbBtn.Click += (_, _) => AddDbRow();
 
@@ -144,32 +142,32 @@ public class ConfigEditorDialog : Window
         // ── buttons ───────────────────────────────────────────────────────────
         var cancelBtn = new Button
         {
-            Content = "Cancel",
+            Content    = "Cancel",
             Background = new SolidColorBrush(Color.Parse("#313244")),
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            Padding = new Thickness(16, 8),
-            FontSize = 12,
+            Padding    = new Thickness(16, 8),
+            FontSize   = 12,
         };
         cancelBtn.Click += (_, _) => Close(null);
 
         var saveBtn = new Button
         {
-            Content = "Save",
+            Content    = "Save",
             Background = new SolidColorBrush(Color.Parse("#89b4fa")),
             Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
             FontWeight = FontWeight.SemiBold,
-            Padding = new Thickness(16, 8),
-            FontSize = 12,
+            Padding    = new Thickness(16, 8),
+            FontSize   = 12,
         };
         saveBtn.Click += OnSave;
 
         var btnRow = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
+            Orientation         = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 10,
-            Margin = new Thickness(0, 10, 0, 0),
-            Children = { cancelBtn, saveBtn },
+            Spacing             = 10,
+            Margin              = new Thickness(0, 10, 0, 0),
+            Children            = { cancelBtn, saveBtn },
         };
 
         // ── layout ────────────────────────────────────────────────────────────
@@ -177,7 +175,7 @@ public class ConfigEditorDialog : Window
         {
             Content = new StackPanel
             {
-                Margin = new Thickness(20),
+                Margin  = new Thickness(20),
                 Spacing = 0,
                 Children =
                 {
@@ -200,7 +198,7 @@ public class ConfigEditorDialog : Window
             }
         };
 
-        Content = scroll;
+        SetWindowContent(existing == null ? "New Config" : $"Edit Config — {existing.Name}", scroll);
     }
 
     // ── AddDbRow ──────────────────────────────────────────────────────────────
@@ -209,64 +207,64 @@ public class ConfigEditorDialog : Window
     {
         TextBox MakeBox(string wm, string? val = null) => new()
         {
-            Watermark = wm,
-            Text = val ?? "",
-            Background = new SolidColorBrush(Color.Parse("#313244")),
-            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            Watermark       = wm,
+            Text            = val ?? "",
+            Background      = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground      = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush     = new SolidColorBrush(Color.Parse("#45475a")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(8, 5),
-            FontSize = 12,
+            CornerRadius    = new CornerRadius(4),
+            Padding         = new Thickness(8, 5),
+            FontSize        = 12,
         };
 
-        var srcBox = MakeBox("Source DB", db?.SourceDatabase);
-        var tgtBox = MakeBox("Target DB", db?.TargetDatabase);
-        var tenantBox = MakeBox("Tenant ID", db?.TenantId);
-        var commentBox = MakeBox("Comment (optional)", db?.Comment);
+        var srcBox     = MakeBox("Source DB", db?.SourceDatabase);
+        var tgtBox     = MakeBox("Target DB", db?.TargetDatabase);
+        var tenantBox  = MakeBox("Tenant ID", db?.TenantId);
+        var commentBox      = MakeBox("Comment (optional)", db?.Comment);
         var dropAndCreateChk = new CheckBox
         {
-            Content = "Drop and recreate tables (use when columns have changed)",
-            IsChecked = db?.DropAndCreate ?? false,
+            Content    = "Drop and recreate tables (use when columns have changed)",
+            IsChecked  = db?.DropAndCreate ?? false,
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            FontSize = 12,
+            FontSize   = 12,
         };
 
         var filterBox = new ComboBox
         {
-            ItemsSource = new[] { "all", "tenant", "explicit" },
-            SelectedItem = db?.TableFilter ?? "all",
-            Background = new SolidColorBrush(Color.Parse("#313244")),
-            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(8, 5),
-            FontSize = 12,
+            ItemsSource        = new[] { "all", "tenant", "explicit" },
+            SelectedItem       = db?.TableFilter ?? "all",
+            Background         = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground         = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush        = new SolidColorBrush(Color.Parse("#45475a")),
+            BorderThickness    = new Thickness(1),
+            CornerRadius       = new CornerRadius(4),
+            Padding            = new Thickness(8, 5),
+            FontSize           = 12,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
         // Tables panel — only visible when filter = explicit
         var tablesPanel = new StackPanel { Spacing = 4 };
-        var tableRows = new List<TableRowControls>();
+        var tableRows   = new List<TableRowControls>();
 
         var addTableBtn = new Button
         {
-            Content = "+ Add Table",
+            Content    = "+ Add Table",
             Background = new SolidColorBrush(Color.Parse("#313244")),
             Foreground = new SolidColorBrush(Color.Parse("#a6e3a1")),
-            FontSize = 11,
-            Padding = new Thickness(8, 4),
+            FontSize   = 11,
+            Padding    = new Thickness(8, 4),
         };
 
         var explicitSection = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#1e1e2e")),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(8),
-            Margin = new Thickness(0, 4, 0, 0),
-            IsVisible = (db?.TableFilter == "explicit"),
-            Child = new StackPanel
+            Background      = new SolidColorBrush(Color.Parse("#1e1e2e")),
+            CornerRadius    = new CornerRadius(4),
+            Padding         = new Thickness(8),
+            Margin          = new Thickness(0, 4, 0, 0),
+            IsVisible       = (db?.TableFilter == "explicit"),
+            Child           = new StackPanel
             {
                 Spacing = 6,
                 Children =
@@ -295,7 +293,7 @@ public class ConfigEditorDialog : Window
         {
             var selected = filterBox.SelectedItem as string;
             explicitSection.IsVisible = selected == "explicit";
-            tenantBox.IsVisible = selected == "tenant";
+            tenantBox.IsVisible       = selected == "tenant";
         };
 
         // Set initial visibility of tenantBox
@@ -303,12 +301,12 @@ public class ConfigEditorDialog : Window
 
         var removeBtn = new Button
         {
-            Content = "✕",
+            Content    = "✕",
             Background = new SolidColorBrush(Color.Parse("#f38ba8")),
             Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
-            Padding = new Thickness(8, 5),
-            FontSize = 11,
-            Width = 30,
+            Padding    = new Thickness(8, 5),
+            FontSize   = 11,
+            Width      = 30,
         };
 
         var row = new DbRowControls(srcBox, tgtBox, filterBox, tenantBox, commentBox, tablesPanel, tableRows, dropAndCreateChk);
@@ -317,19 +315,19 @@ public class ConfigEditorDialog : Window
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,Auto"),
-            ColumnSpacing = 6,
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto"),
-            RowSpacing = 4,
+            ColumnSpacing     = 6,
+            RowDefinitions    = new RowDefinitions("Auto,Auto,Auto,Auto,Auto"),
+            RowSpacing        = 4,
         };
 
-        Grid.SetColumn(srcBox, 0); Grid.SetRow(srcBox, 0);
-        Grid.SetColumn(tgtBox, 1); Grid.SetRow(tgtBox, 0);
-        Grid.SetColumn(removeBtn, 2); Grid.SetRow(removeBtn, 0);
-        Grid.SetColumn(filterBox, 0); Grid.SetRow(filterBox, 1);
-        Grid.SetColumn(tenantBox, 1); Grid.SetRow(tenantBox, 1);
-        Grid.SetColumn(commentBox, 0); Grid.SetRow(commentBox, 2); Grid.SetColumnSpan(commentBox, 2);
-        Grid.SetColumn(explicitSection, 0); Grid.SetRow(explicitSection, 3); Grid.SetColumnSpan(explicitSection, 3);
-        Grid.SetColumn(dropAndCreateChk, 0); Grid.SetRow(dropAndCreateChk, 4); Grid.SetColumnSpan(dropAndCreateChk, 3);
+        Grid.SetColumn(srcBox,          0); Grid.SetRow(srcBox, 0);
+        Grid.SetColumn(tgtBox,          1); Grid.SetRow(tgtBox, 0);
+        Grid.SetColumn(removeBtn,       2); Grid.SetRow(removeBtn, 0);
+        Grid.SetColumn(filterBox,       0); Grid.SetRow(filterBox, 1);
+        Grid.SetColumn(tenantBox,       1); Grid.SetRow(tenantBox, 1);
+        Grid.SetColumn(commentBox,      0); Grid.SetRow(commentBox, 2); Grid.SetColumnSpan(commentBox, 2);
+        Grid.SetColumn(explicitSection,   0); Grid.SetRow(explicitSection, 3);   Grid.SetColumnSpan(explicitSection, 3);
+        Grid.SetColumn(dropAndCreateChk,  0); Grid.SetRow(dropAndCreateChk, 4); Grid.SetColumnSpan(dropAndCreateChk, 3);
 
         grid.Children.Add(srcBox);
         grid.Children.Add(tgtBox);
@@ -342,10 +340,10 @@ public class ConfigEditorDialog : Window
 
         var container = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Background   = new SolidColorBrush(Color.Parse("#313244")),
             CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(10),
-            Child = grid,
+            Padding      = new Thickness(10),
+            Child        = grid,
         };
 
         removeBtn.Click += (_, _) =>
@@ -363,35 +361,35 @@ public class ConfigEditorDialog : Window
     {
         TextBox MakeBox(string wm, string? val = null) => new()
         {
-            Watermark = wm,
-            Text = val ?? "",
-            Background = new SolidColorBrush(Color.Parse("#2a2a3e")),
-            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            Watermark       = wm,
+            Text            = val ?? "",
+            Background      = new SolidColorBrush(Color.Parse("#2a2a3e")),
+            Foreground      = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush     = new SolidColorBrush(Color.Parse("#45475a")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 4),
-            FontSize = 11,
+            CornerRadius    = new CornerRadius(4),
+            Padding         = new Thickness(6, 4),
+            FontSize        = 11,
         };
 
-        var nameBox = MakeBox("dbo.TableName", t?.Name);
-        var whereBox = MakeBox("WHERE clause (optional)", t?.Where);
-        var queryBox = MakeBox("Custom query (optional)", t?.Query);
+        var nameBox   = MakeBox("dbo.TableName", t?.Name);
+        var whereBox  = MakeBox("WHERE clause (optional)", t?.Where);
+        var queryBox  = MakeBox("Custom query (optional)", t?.Query);
         var ignoreChk = new CheckBox
         {
-            Content = "Ignore",
-            IsChecked = t?.Ignore ?? false,
+            Content    = "Ignore",
+            IsChecked  = t?.Ignore ?? false,
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            FontSize = 11,
+            FontSize   = 11,
         };
         var removeBtn = new Button
         {
-            Content = "✕",
+            Content    = "✕",
             Background = new SolidColorBrush(Color.Parse("#f38ba8")),
             Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
-            Padding = new Thickness(6, 3),
-            FontSize = 10,
-            Width = 26,
+            Padding    = new Thickness(6, 3),
+            FontSize   = 10,
+            Width      = 26,
         };
 
         var row = new TableRowControls(nameBox, whereBox, queryBox, ignoreChk);
@@ -400,33 +398,33 @@ public class ConfigEditorDialog : Window
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto"),
-            ColumnSpacing = 4,
-            RowDefinitions = new RowDefinitions("Auto,Auto"),
-            RowSpacing = 3,
+            ColumnSpacing     = 4,
+            RowDefinitions    = new RowDefinitions("Auto,Auto"),
+            RowSpacing        = 3,
         };
 
-        Grid.SetColumn(nameBox, 0); Grid.SetRow(nameBox, 0);
+        Grid.SetColumn(nameBox,   0); Grid.SetRow(nameBox, 0);
         Grid.SetColumn(ignoreChk, 1); Grid.SetRow(ignoreChk, 0); Grid.SetColumnSpan(ignoreChk, 1);
         Grid.SetColumn(removeBtn, 3); Grid.SetRow(removeBtn, 0);
-        Grid.SetColumn(whereBox, 0); Grid.SetRow(whereBox, 1); Grid.SetColumnSpan(whereBox, 2);
-        Grid.SetColumn(queryBox, 0); // will add below conditionally
+        Grid.SetColumn(whereBox,  0); Grid.SetRow(whereBox, 1); Grid.SetColumnSpan(whereBox, 2);
+        Grid.SetColumn(queryBox,  0); // will add below conditionally
 
         // Only show where/query when not ignored
         var detailRow = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*"),
-            ColumnSpacing = 4,
+            ColumnSpacing     = 4,
         };
         Grid.SetColumn(whereBox, 0);
         Grid.SetColumn(queryBox, 1);
 
         var container = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#313244")),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(6),
-            Margin = new Thickness(0, 0, 0, 2),
-            Child = new StackPanel
+            Background      = new SolidColorBrush(Color.Parse("#313244")),
+            CornerRadius    = new CornerRadius(3),
+            Padding         = new Thickness(6),
+            Margin          = new Thickness(0, 0, 0, 2),
+            Child           = new StackPanel
             {
                 Spacing = 4,
                 Children =
@@ -463,36 +461,36 @@ public class ConfigEditorDialog : Window
     {
         TextBox MakeBox(string wm, string? val = null) => new()
         {
-            Watermark = wm,
-            Text = val ?? "",
-            Background = new SolidColorBrush(Color.Parse("#313244")),
-            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            Watermark       = wm,
+            Text            = val ?? "",
+            Background      = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground      = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush     = new SolidColorBrush(Color.Parse("#45475a")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(8, 5),
-            FontSize = 12,
+            CornerRadius    = new CornerRadius(4),
+            Padding         = new Thickness(8, 5),
+            FontSize        = 12,
         };
 
-        var tenantIdBox = MakeBox("Tenant ID (e.g. 142)", t?.TenantId);
-        var schemaBox = MakeBox("New schema name (e.g. WarehouseCo)", t?.Schema);
-        var dbBox = MakeBox("Database", t?.Database);
+        var tenantIdBox     = MakeBox("Tenant ID (e.g. 142)", t?.TenantId);
+        var schemaBox       = MakeBox("New schema name (e.g. WarehouseCo)", t?.Schema);
+        var dbBox           = MakeBox("Database", t?.Database);
         var sourceSchemaBox = MakeBox("Source schema (optional, skips suffix stripping)", t?.SourceSchema);
-        var compatCheck = new CheckBox
+        var compatCheck     = new CheckBox
         {
-            Content = "Create compatibility views",
-            IsChecked = t?.CreateCompatibilityViews ?? false,
+            Content    = "Create compatibility views",
+            IsChecked  = t?.CreateCompatibilityViews ?? false,
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
-            FontSize = 12,
+            FontSize   = 12,
         };
         var removeBtn = new Button
         {
-            Content = "✕",
+            Content    = "✕",
             Background = new SolidColorBrush(Color.Parse("#f38ba8")),
             Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
-            Padding = new Thickness(8, 5),
-            FontSize = 11,
-            Width = 30,
+            Padding    = new Thickness(8, 5),
+            FontSize   = 11,
+            Width      = 30,
         };
 
         var row = new TenantRowControls(tenantIdBox, schemaBox, dbBox, compatCheck, sourceSchemaBox);
@@ -501,16 +499,16 @@ public class ConfigEditorDialog : Window
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,Auto"),
-            ColumnSpacing = 6,
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
-            RowSpacing = 4,
+            ColumnSpacing     = 6,
+            RowDefinitions    = new RowDefinitions("Auto,Auto,Auto"),
+            RowSpacing        = 4,
         };
 
-        Grid.SetColumn(tenantIdBox, 0); Grid.SetRow(tenantIdBox, 0);
-        Grid.SetColumn(schemaBox, 1); Grid.SetRow(schemaBox, 0);
-        Grid.SetColumn(removeBtn, 2); Grid.SetRow(removeBtn, 0);
-        Grid.SetColumn(dbBox, 0); Grid.SetRow(dbBox, 1);
-        Grid.SetColumn(compatCheck, 1); Grid.SetRow(compatCheck, 1);
+        Grid.SetColumn(tenantIdBox,     0); Grid.SetRow(tenantIdBox, 0);
+        Grid.SetColumn(schemaBox,       1); Grid.SetRow(schemaBox, 0);
+        Grid.SetColumn(removeBtn,       2); Grid.SetRow(removeBtn, 0);
+        Grid.SetColumn(dbBox,           0); Grid.SetRow(dbBox, 1);
+        Grid.SetColumn(compatCheck,     1); Grid.SetRow(compatCheck, 1);
         Grid.SetColumn(sourceSchemaBox, 0); Grid.SetRow(sourceSchemaBox, 2); Grid.SetColumnSpan(sourceSchemaBox, 2);
 
         grid.Children.Add(tenantIdBox);
@@ -522,10 +520,10 @@ public class ConfigEditorDialog : Window
 
         var container = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Background   = new SolidColorBrush(Color.Parse("#313244")),
             CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(10),
-            Child = grid,
+            Padding      = new Thickness(10),
+            Child        = grid,
         };
 
         removeBtn.Click += (_, _) =>
@@ -550,39 +548,39 @@ public class ConfigEditorDialog : Window
         {
             Source = new ConnectionConfig
             {
-                Server = _srcServer.Text?.Trim() ?? "",
-                Port = ParsePort(_srcPort.Text),
-                Username = _srcUser.Text?.Trim() ?? "",
-                Password = _srcPass.Text ?? "",
-                Encrypt = _srcEncrypt.IsChecked ?? false,
-                TrustServerCertificate = _srcTrust.IsChecked ?? true,
+                Server                 = _srcServer.Text?.Trim() ?? "",
+                Port                   = ParsePort(_srcPort.Text),
+                Username               = _srcUser.Text?.Trim()   ?? "",
+                Password               = _srcPass.Text           ?? "",
+                Encrypt                = _srcEncrypt.IsChecked   ?? false,
+                TrustServerCertificate = _srcTrust.IsChecked     ?? true,
             },
             Target = new ConnectionConfig
             {
-                Server = _tgtServer.Text?.Trim() ?? "",
-                Port = ParsePort(_tgtPort.Text),
-                Username = _tgtUser.Text?.Trim() ?? "",
-                Password = _tgtPass.Text ?? "",
-                Encrypt = _tgtEncrypt.IsChecked ?? false,
-                TrustServerCertificate = _tgtTrust.IsChecked ?? true,
+                Server                 = _tgtServer.Text?.Trim() ?? "",
+                Port                   = ParsePort(_tgtPort.Text),
+                Username               = _tgtUser.Text?.Trim()   ?? "",
+                Password               = _tgtPass.Text           ?? "",
+                Encrypt                = _tgtEncrypt.IsChecked   ?? false,
+                TrustServerCertificate = _tgtTrust.IsChecked     ?? true,
             },
             Databases = _dbRows.Select(r =>
             {
                 var filter = r.Filter.SelectedItem as string ?? "all";
                 return new DbEntry
                 {
-                    SourceDatabase = r.Source.Text?.Trim() ?? "",
-                    TargetDatabase = r.Target.Text?.Trim() ?? "",
-                    TableFilter = filter,
-                    TenantId = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
-                    Comment = r.Comment.Text?.Trim() is { Length: > 0 } c ? c : null,
-                    DropAndCreate = r.DropAndCreate.IsChecked ?? false,
-                    Tables = filter == "explicit"
+                    SourceDatabase = r.Source.Text?.Trim()   ?? "",
+                    TargetDatabase = r.Target.Text?.Trim()   ?? "",
+                    TableFilter    = filter,
+                    TenantId       = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
+                    Comment        = r.Comment.Text?.Trim()  is { Length: > 0 } c ? c : null,
+                    DropAndCreate  = r.DropAndCreate.IsChecked ?? false,
+                    Tables         = filter == "explicit"
                         ? r.TableRows.Select(tr => new JsonTable
                         {
-                            Name = tr.Name.Text?.Trim() ?? "",
-                            Where = tr.Where.Text?.Trim() is { Length: > 0 } w ? w : null,
-                            Query = tr.Query.Text?.Trim() is { Length: > 0 } q ? q : null,
+                            Name   = tr.Name.Text?.Trim()  ?? "",
+                            Where  = tr.Where.Text?.Trim() is { Length: > 0 } w ? w : null,
+                            Query  = tr.Query.Text?.Trim() is { Length: > 0 } q ? q : null,
                             Ignore = tr.Ignore.IsChecked is true ? true : null,
                         }).Where(t => t.Name.Length > 0).ToList()
                         : null,
@@ -590,11 +588,11 @@ public class ConfigEditorDialog : Window
             }).Where(d => d.SourceDatabase.Length > 0).ToList(),
             Tenants = _tenantRows.Select(r => new TenantEntry
             {
-                TenantId = r.TenantId.Text?.Trim() ?? "",
-                Schema = r.Schema.Text?.Trim() ?? "",
-                Database = r.Database.Text?.Trim() ?? "",
-                SourceSchema = r.SourceSchema.Text?.Trim() is { Length: > 0 } ss ? ss : null,
-                CreateCompatibilityViews = r.CompatViews.IsChecked ?? false,
+                TenantId                 = r.TenantId.Text?.Trim()    ?? "",
+                Schema                   = r.Schema.Text?.Trim()       ?? "",
+                Database                 = r.Database.Text?.Trim()     ?? "",
+                SourceSchema             = r.SourceSchema.Text?.Trim() is { Length: > 0 } ss ? ss : null,
+                CreateCompatibilityViews = r.CompatViews.IsChecked     ?? false,
             }).Where(t => t.TenantId.Length > 0 || t.SourceSchema != null).ToList(),
         };
 
