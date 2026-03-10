@@ -133,7 +133,7 @@
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
             <Rectangle Height="1" Fill="#1e1e2e"/>
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto">
               <TextBlock Grid.Column="0" Text="CONFIGS" FontSize="10" FontWeight="SemiBold"
                          Foreground="#6c7086" LetterSpacing="1" VerticalAlignment="Center"/>
               <Button Grid.Column="1" Content="↑" Classes="ghost"

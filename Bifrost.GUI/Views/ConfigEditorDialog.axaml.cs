@@ -19,14 +19,20 @@ public class ConfigEditorDialog : Window
     private readonly List<TenantRowControls> _tenantRows = [];
     private readonly List<DbRowControls> _dbRows = [];
 
-    private record DbRowControls(TextBox Source, TextBox Target, TextBox Filter, TextBox TenantId, TextBox Comment);
+    private record DbRowControls(
+        TextBox Source, TextBox Target, ComboBox Filter,
+        TextBox TenantId, TextBox Comment,
+        StackPanel TablesPanel, List<TableRowControls> TableRows,
+        CheckBox DropAndCreate);
+
+    private record TableRowControls(TextBox Name, TextBox Where, TextBox Query, CheckBox Ignore);
     private record TenantRowControls(TextBox TenantId, TextBox Schema, TextBox Database, CheckBox CompatViews, TextBox SourceSchema);
 
     public ConfigEditorDialog(NamedConfig? existing = null)
     {
         Title = existing == null ? "New Config" : "Edit Config";
-        Width = 640;
-        Height = 680;
+        Width = 680;
+        Height = 720;
         CanResize = true;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.Parse("#1e1e2e"));
@@ -71,11 +77,7 @@ public class ConfigEditorDialog : Window
             Child = new StackPanel
             {
                 Spacing = 4,
-                Children =
-                {
-                    MakeLabel(title, "#89b4fa"),
-                    content,
-                }
+                Children = { MakeLabel(title, "#89b4fa"), content }
             }
         };
 
@@ -88,6 +90,7 @@ public class ConfigEditorDialog : Window
             port = MakeBox("Port", c?.Port.ToString() ?? "1433");
             user = MakeBox("Username", c?.Username);
             pass = MakeBox("Password", c?.Password);
+            pass.PasswordChar = '●';
             encrypt = MakeCheck("Encrypt", c?.Encrypt ?? false);
             trust = MakeCheck("Trust Server Certificate", c?.TrustServerCertificate ?? true);
 
@@ -96,15 +99,11 @@ public class ConfigEditorDialog : Window
             port.Width = 80;
             grid.Children.Add(server); grid.Children.Add(port);
 
-            return new StackPanel
-            {
-                Spacing = 6,
-                Children = { grid, user, pass, encrypt, trust }
-            };
+            return new StackPanel { Spacing = 6, Children = { grid, user, pass, encrypt, trust } };
         }
 
         // ── fields ───────────────────────────────────────────────────────────
-        _nameBox = MakeBox("e.g. DB Name", existing?.Name);
+        _nameBox = MakeBox("e.g. UNFI Staging", existing?.Name);
 
         var srcPanel = MakeConnFields(out _srcServer, out _srcPort, out _srcUser, out _srcPass,
             out _srcEncrypt, out _srcTrust, existing?.Config.Source);
@@ -137,7 +136,6 @@ public class ConfigEditorDialog : Window
         };
         addDbBtn.Click += (_, _) => AddDbRow();
 
-        // Populate existing databases
         if (existing?.Config.Databases is { Count: > 0 } dbs)
             foreach (var db in dbs) AddDbRow(db);
         else
@@ -205,6 +203,8 @@ public class ConfigEditorDialog : Window
         Content = scroll;
     }
 
+    // ── AddDbRow ──────────────────────────────────────────────────────────────
+
     private void AddDbRow(DbEntry? db = null)
     {
         TextBox MakeBox(string wm, string? val = null) => new()
@@ -222,9 +222,84 @@ public class ConfigEditorDialog : Window
 
         var srcBox = MakeBox("Source DB", db?.SourceDatabase);
         var tgtBox = MakeBox("Target DB", db?.TargetDatabase);
-        var filterBox = MakeBox("Filter (all/tenant/explicit)", db?.TableFilter ?? "all");
-        var tenantBox = MakeBox("Tenant ID (if tenant filter)", db?.TenantId);
+        var tenantBox = MakeBox("Tenant ID", db?.TenantId);
         var commentBox = MakeBox("Comment (optional)", db?.Comment);
+        var dropAndCreateChk = new CheckBox
+        {
+            Content = "Drop and recreate tables (use when columns have changed)",
+            IsChecked = db?.DropAndCreate ?? false,
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            FontSize = 12,
+        };
+
+        var filterBox = new ComboBox
+        {
+            ItemsSource = new[] { "all", "tenant", "explicit" },
+            SelectedItem = db?.TableFilter ?? "all",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 5),
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        // Tables panel — only visible when filter = explicit
+        var tablesPanel = new StackPanel { Spacing = 4 };
+        var tableRows = new List<TableRowControls>();
+
+        var addTableBtn = new Button
+        {
+            Content = "+ Add Table",
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            Foreground = new SolidColorBrush(Color.Parse("#a6e3a1")),
+            FontSize = 11,
+            Padding = new Thickness(8, 4),
+        };
+
+        var explicitSection = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#1e1e2e")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8),
+            Margin = new Thickness(0, 4, 0, 0),
+            IsVisible = (db?.TableFilter == "explicit"),
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text       = "EXPLICIT TABLES",
+                        FontSize   = 10,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = new SolidColorBrush(Color.Parse("#6c7086")),
+                    },
+                    tablesPanel,
+                    addTableBtn,
+                }
+            }
+        };
+
+        // Populate existing explicit tables
+        if (db?.Tables != null)
+            foreach (var t in db.Tables) AddTableRow(tablesPanel, tableRows, t);
+
+        addTableBtn.Click += (_, _) => AddTableRow(tablesPanel, tableRows);
+
+        // Show/hide explicit section based on filter selection
+        filterBox.SelectionChanged += (_, _) =>
+        {
+            var selected = filterBox.SelectedItem as string;
+            explicitSection.IsVisible = selected == "explicit";
+            tenantBox.IsVisible = selected == "tenant";
+        };
+
+        // Set initial visibility of tenantBox
+        tenantBox.IsVisible = db?.TableFilter == "tenant";
 
         var removeBtn = new Button
         {
@@ -236,14 +311,14 @@ public class ConfigEditorDialog : Window
             Width = 30,
         };
 
-        var row = new DbRowControls(srcBox, tgtBox, filterBox, tenantBox, commentBox);
+        var row = new DbRowControls(srcBox, tgtBox, filterBox, tenantBox, commentBox, tablesPanel, tableRows, dropAndCreateChk);
         _dbRows.Add(row);
 
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,Auto"),
             ColumnSpacing = 6,
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto"),
             RowSpacing = 4,
         };
 
@@ -252,8 +327,9 @@ public class ConfigEditorDialog : Window
         Grid.SetColumn(removeBtn, 2); Grid.SetRow(removeBtn, 0);
         Grid.SetColumn(filterBox, 0); Grid.SetRow(filterBox, 1);
         Grid.SetColumn(tenantBox, 1); Grid.SetRow(tenantBox, 1);
-        Grid.SetColumn(commentBox, 0); Grid.SetRow(commentBox, 2);
-        Grid.SetColumnSpan(commentBox, 2);
+        Grid.SetColumn(commentBox, 0); Grid.SetRow(commentBox, 2); Grid.SetColumnSpan(commentBox, 2);
+        Grid.SetColumn(explicitSection, 0); Grid.SetRow(explicitSection, 3); Grid.SetColumnSpan(explicitSection, 3);
+        Grid.SetColumn(dropAndCreateChk, 0); Grid.SetRow(dropAndCreateChk, 4); Grid.SetColumnSpan(dropAndCreateChk, 3);
 
         grid.Children.Add(srcBox);
         grid.Children.Add(tgtBox);
@@ -261,6 +337,8 @@ public class ConfigEditorDialog : Window
         grid.Children.Add(filterBox);
         grid.Children.Add(tenantBox);
         grid.Children.Add(commentBox);
+        grid.Children.Add(explicitSection);
+        grid.Children.Add(dropAndCreateChk);
 
         var container = new Border
         {
@@ -278,6 +356,108 @@ public class ConfigEditorDialog : Window
 
         _dbPanel.Children.Add(container);
     }
+
+    // ── AddTableRow ───────────────────────────────────────────────────────────
+
+    private static void AddTableRow(StackPanel panel, List<TableRowControls> rows, JsonTable? t = null)
+    {
+        TextBox MakeBox(string wm, string? val = null) => new()
+        {
+            Watermark = wm,
+            Text = val ?? "",
+            Background = new SolidColorBrush(Color.Parse("#2a2a3e")),
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#45475a")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 4),
+            FontSize = 11,
+        };
+
+        var nameBox = MakeBox("dbo.TableName", t?.Name);
+        var whereBox = MakeBox("WHERE clause (optional)", t?.Where);
+        var queryBox = MakeBox("Custom query (optional)", t?.Query);
+        var ignoreChk = new CheckBox
+        {
+            Content = "Ignore",
+            IsChecked = t?.Ignore ?? false,
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            FontSize = 11,
+        };
+        var removeBtn = new Button
+        {
+            Content = "✕",
+            Background = new SolidColorBrush(Color.Parse("#f38ba8")),
+            Foreground = new SolidColorBrush(Color.Parse("#1e1e2e")),
+            Padding = new Thickness(6, 3),
+            FontSize = 10,
+            Width = 26,
+        };
+
+        var row = new TableRowControls(nameBox, whereBox, queryBox, ignoreChk);
+        rows.Add(row);
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto"),
+            ColumnSpacing = 4,
+            RowDefinitions = new RowDefinitions("Auto,Auto"),
+            RowSpacing = 3,
+        };
+
+        Grid.SetColumn(nameBox, 0); Grid.SetRow(nameBox, 0);
+        Grid.SetColumn(ignoreChk, 1); Grid.SetRow(ignoreChk, 0); Grid.SetColumnSpan(ignoreChk, 1);
+        Grid.SetColumn(removeBtn, 3); Grid.SetRow(removeBtn, 0);
+        Grid.SetColumn(whereBox, 0); Grid.SetRow(whereBox, 1); Grid.SetColumnSpan(whereBox, 2);
+        Grid.SetColumn(queryBox, 0); // will add below conditionally
+
+        // Only show where/query when not ignored
+        var detailRow = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            ColumnSpacing = 4,
+        };
+        Grid.SetColumn(whereBox, 0);
+        Grid.SetColumn(queryBox, 1);
+
+        var container = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#313244")),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6),
+            Margin = new Thickness(0, 0, 0, 2),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new Grid
+                    {
+                        ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+                        ColumnSpacing = 6,
+                        Children =
+                        {
+                            nameBox.Also(b => Grid.SetColumn(b, 0)),
+                            ignoreChk.Also(b => { Grid.SetColumn(b, 1); b.VerticalAlignment = VerticalAlignment.Center; }),
+                            removeBtn.Also(b => Grid.SetColumn(b, 2)),
+                        }
+                    },
+                    whereBox,
+                    queryBox,
+                }
+            }
+        };
+
+        removeBtn.Click += (_, _) =>
+        {
+            rows.Remove(row);
+            panel.Children.Remove(container);
+        };
+
+        panel.Children.Add(container);
+    }
+
+    // ── AddTenantRow ──────────────────────────────────────────────────────────
 
     private void AddTenantRow(TenantEntry? t = null)
     {
@@ -305,7 +485,6 @@ public class ConfigEditorDialog : Window
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
             FontSize = 12,
         };
-
         var removeBtn = new Button
         {
             Content = "✕",
@@ -332,8 +511,7 @@ public class ConfigEditorDialog : Window
         Grid.SetColumn(removeBtn, 2); Grid.SetRow(removeBtn, 0);
         Grid.SetColumn(dbBox, 0); Grid.SetRow(dbBox, 1);
         Grid.SetColumn(compatCheck, 1); Grid.SetRow(compatCheck, 1);
-        Grid.SetColumn(sourceSchemaBox, 0); Grid.SetRow(sourceSchemaBox, 2);
-        Grid.SetColumnSpan(sourceSchemaBox, 2);
+        Grid.SetColumn(sourceSchemaBox, 0); Grid.SetRow(sourceSchemaBox, 2); Grid.SetColumnSpan(sourceSchemaBox, 2);
 
         grid.Children.Add(tenantIdBox);
         grid.Children.Add(schemaBox);
@@ -358,6 +536,8 @@ public class ConfigEditorDialog : Window
 
         _tenantPanel.Children.Add(container);
     }
+
+    // ── OnSave ────────────────────────────────────────────────────────────────
 
     private void OnSave(object? sender, RoutedEventArgs e)
     {
@@ -386,13 +566,27 @@ public class ConfigEditorDialog : Window
                 Encrypt = _tgtEncrypt.IsChecked ?? false,
                 TrustServerCertificate = _tgtTrust.IsChecked ?? true,
             },
-            Databases = _dbRows.Select(r => new DbEntry
+            Databases = _dbRows.Select(r =>
             {
-                SourceDatabase = r.Source.Text?.Trim() ?? "",
-                TargetDatabase = r.Target.Text?.Trim() ?? "",
-                TableFilter = r.Filter.Text?.Trim() is { Length: > 0 } f ? f : "all",
-                TenantId = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
-                Comment = r.Comment.Text?.Trim() is { Length: > 0 } c ? c : null,
+                var filter = r.Filter.SelectedItem as string ?? "all";
+                return new DbEntry
+                {
+                    SourceDatabase = r.Source.Text?.Trim() ?? "",
+                    TargetDatabase = r.Target.Text?.Trim() ?? "",
+                    TableFilter = filter,
+                    TenantId = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
+                    Comment = r.Comment.Text?.Trim() is { Length: > 0 } c ? c : null,
+                    DropAndCreate = r.DropAndCreate.IsChecked ?? false,
+                    Tables = filter == "explicit"
+                        ? r.TableRows.Select(tr => new JsonTable
+                        {
+                            Name = tr.Name.Text?.Trim() ?? "",
+                            Where = tr.Where.Text?.Trim() is { Length: > 0 } w ? w : null,
+                            Query = tr.Query.Text?.Trim() is { Length: > 0 } q ? q : null,
+                            Ignore = tr.Ignore.IsChecked is true ? true : null,
+                        }).Where(t => t.Name.Length > 0).ToList()
+                        : null,
+                };
             }).Where(d => d.SourceDatabase.Length > 0).ToList(),
             Tenants = _tenantRows.Select(r => new TenantEntry
             {
@@ -405,5 +599,15 @@ public class ConfigEditorDialog : Window
         };
 
         Close(new NamedConfig { Name = name, Config = config });
+    }
+}
+
+// Helper extension to allow inline property setting
+file static class ControlExtensions
+{
+    public static T Also<T>(this T control, Action<T> configure) where T : Control
+    {
+        configure(control);
+        return control;
     }
 }

@@ -17,9 +17,9 @@ public static class Migrator
         var sourceConn = config.Source;
         var targetConn = config.Target;
 
-        var sw         = Stopwatch.StartNew();
-        int totalOk    = 0;
-        int totalFail  = 0;
+        var sw = Stopwatch.StartNew();
+        int totalOk = 0;
+        int totalFail = 0;
         long totalRows = 0;
 
         // Pre-resolve all tables for progress tracking
@@ -80,7 +80,7 @@ public static class Migrator
                         else
                         {
                             rows = RetryHelper.Run(
-                                () => MigrateTable(srcConn, dstConn!, t, bulk),
+                                () => MigrateTable(srcConn, dstConn!, t, bulk, entry.DropAndCreate),
                                 label: $"{t.Schema}.{t.Name}");
                         }
 
@@ -131,18 +131,18 @@ public static class Migrator
     private static long MigrateTable(
         Microsoft.Data.SqlClient.SqlConnection srcConn,
         Microsoft.Data.SqlClient.SqlConnection dstConn,
-        TableRef t, bool bulk)
+        TableRef t, bool bulk, bool dropAndCreate = false)
     {
-        var fullName    = $"[{t.Schema}].[{t.Name}]";
-        var columns     = Database.GetColumns(srcConn, t.Schema, t.Name);
+        var fullName = $"[{t.Schema}].[{t.Name}]";
+        var columns = Database.GetColumns(srcConn, t.Schema, t.Name);
         if (columns.Count == 0) throw new Exception("No columns found — table may not exist");
 
         var hasIdentity = columns.Any(c => c.IsIdentity);
-        var colNames    = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
+        var colNames = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
 
-        var createSql = SqlBuilder.BuildCreateTable(t.Schema, t.Name, columns);
+        var createSql = SqlBuilder.BuildCreateTable(t.Schema, t.Name, columns, dropAndCreate);
         Database.ExecuteBatch(dstConn, createSql.Replace("\r\nGO", "").Replace("\nGO", "").Trim());
-        Database.ExecuteBatch(dstConn, $"DELETE FROM {fullName}");
+        if (!dropAndCreate) Database.ExecuteBatch(dstConn, $"DELETE FROM {fullName}");
 
         long rows = bulk
             ? MigrateTableBulk(srcConn, dstConn, t, fullName, colNames, columns, hasIdentity)
@@ -171,26 +171,28 @@ public static class Migrator
             ? Microsoft.Data.SqlClient.SqlBulkCopyOptions.KeepIdentity
             : Microsoft.Data.SqlClient.SqlBulkCopyOptions.Default;
 
-        long rowsCopied = 0;
         using var bulkCopy = new Microsoft.Data.SqlClient.SqlBulkCopy(dstConn, bulkOptions, null)
         {
             DestinationTableName = fullName,
-            BatchSize            = 1000,
-            BulkCopyTimeout      = 300,
-            NotifyAfter          = 1000,
+            BatchSize = 1000,
+            BulkCopyTimeout = 300,
+            NotifyAfter = 1000,
         };
 
         bulkCopy.SqlRowsCopied += (_, e) =>
-        {
-            rowsCopied = e.RowsCopied;
             Logger.Log($"       [{DateTime.Now:HH:mm:ss}]     {e.RowsCopied:N0} rows copied...");
-        };
 
         foreach (var col in reader.GetColumnSchema())
             bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
 
         bulkCopy.WriteToServer(reader);
-        return rowsCopied;
+
+        // Always use COUNT for the final row count — SqlRowsCopied is unreliable
+        // for small tables (never fires) and misses partial final batches.
+        // reader and bulkCopy are done at this point; dstConn is free.
+        using var countCmd = dstConn.CreateCommand();
+        countCmd.CommandText = $"SELECT COUNT(*) FROM {fullName}";
+        return Convert.ToInt64(countCmd.ExecuteScalar());
     }
 
     private static long MigrateTableInsert(
@@ -223,7 +225,7 @@ public static class Migrator
         }
 
         if (t.Query != null) Database.StreamCustomQuery(srcConn, t.Query, OnRow);
-        else                  Database.StreamRows(srcConn, t.Schema, t.Name, colNames, t.Where, OnRow);
+        else Database.StreamRows(srcConn, t.Schema, t.Name, colNames, t.Where, OnRow);
         FlushBuffer();
 
         if (hasIdentity)

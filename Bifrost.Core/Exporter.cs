@@ -23,12 +23,12 @@ public static class Exporter
         var manifest = new Manifest
         {
             ExportedAt = DateTime.UtcNow.ToString("O"),
-            Server     = conn.Server,
+            Server = conn.Server,
         };
 
-        var sw         = Stopwatch.StartNew();
-        int totalOk    = 0;
-        int totalFail  = 0;
+        var sw = Stopwatch.StartNew();
+        int totalOk = 0;
+        int totalFail = 0;
         long totalRows = 0;
 
         // Pre-count for progress
@@ -144,22 +144,22 @@ public static class Exporter
     }
 
     private static (string FileName, long RowCount) ExportTable(
-        Microsoft.Data.SqlClient.SqlConnection conn, TableRef t, string dbOutDir)
+        Microsoft.Data.SqlClient.SqlConnection conn, TableRef t, string dbOutDir, bool dropAndCreate = false)
     {
         var fullName = $"[{t.Schema}].[{t.Name}]";
-        var msg      = $"    [{DateTime.Now:HH:mm:ss}] -> Exporting {fullName}";
+        var msg = $"    [{DateTime.Now:HH:mm:ss}] -> Exporting {fullName}";
         if (t.Where != null) msg += " (filtered)";
         if (t.Query != null) msg += " (custom query)";
         Logger.Log(msg + "...");
 
-        var columns     = Database.GetColumns(conn, t.Schema, t.Name);
+        var columns = Database.GetColumns(conn, t.Schema, t.Name);
         if (columns.Count == 0) throw new Exception("No columns found — table may not exist");
 
         var hasIdentity = columns.Any(c => c.IsIdentity);
-        var colNames    = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
-        var fileName    = $"{t.Schema}.{t.Name}.sql";
-        var filePath    = Path.Combine(dbOutDir, fileName);
-        long rowCount   = 0;
+        var colNames = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
+        var fileName = $"{t.Schema}.{t.Name}.sql";
+        var filePath = Path.Combine(dbOutDir, fileName);
+        long rowCount = 0;
         const int BatchSize = 100;
 
         using (var writer = new StreamWriter(filePath, false, Encoding.UTF8))
@@ -170,11 +170,14 @@ public static class Exporter
             writer.WriteLine($"-- ============================================================");
             writer.WriteLine();
             writer.WriteLine("-- Schema");
-            writer.Write(SqlBuilder.BuildCreateTable(t.Schema, t.Name, columns));
+            writer.Write(SqlBuilder.BuildCreateTable(t.Schema, t.Name, columns, dropAndCreate));
             writer.WriteLine();
-            writer.WriteLine("-- Clear existing data");
-            writer.WriteLine($"DELETE FROM [{t.Schema}].[{t.Name}];");
-            writer.WriteLine("GO");
+            if (!dropAndCreate)
+            {
+                writer.WriteLine("-- Clear existing data");
+                writer.WriteLine($"DELETE FROM [{t.Schema}].[{t.Name}];");
+                writer.WriteLine("GO");
+            }
             writer.WriteLine();
 
             if (hasIdentity)
@@ -195,7 +198,7 @@ public static class Exporter
             }
 
             if (t.Query != null) Database.StreamCustomQuery(conn, t.Query, WriteInsert);
-            else                  Database.StreamRows(conn, t.Schema, t.Name, colNames, t.Where, WriteInsert);
+            else Database.StreamRows(conn, t.Schema, t.Name, colNames, t.Where, WriteInsert);
 
             writer.WriteLine("GO");
             writer.WriteLine();

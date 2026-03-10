@@ -36,6 +36,7 @@ public class DbEntry
     [JsonPropertyName("tenantId")] public string? TenantId { get; set; }
     [JsonPropertyName("tables")] public List<JsonTable>? Tables { get; set; }
     [JsonPropertyName("overrides")] public List<TableOverride>? Overrides { get; set; }
+    [JsonPropertyName("dropAndCreate")] public bool DropAndCreate { get; set; } = false;
 }
 
 [JsonConverter(typeof(JsonTableConverter))]
