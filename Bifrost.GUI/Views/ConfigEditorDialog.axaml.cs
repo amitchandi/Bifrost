@@ -101,7 +101,7 @@ public class ConfigEditorDialog : BifrostWindow
         }
 
         // ── fields ───────────────────────────────────────────────────────────
-        _nameBox = MakeBox("e.g. UNFI Staging", existing?.Name);
+        _nameBox = MakeBox("e.g. DatabaseName Staging", existing?.Name);
 
         var srcPanel = MakeConnFields(out _srcServer, out _srcPort, out _srcUser, out _srcPass,
             out _srcEncrypt, out _srcTrust, existing?.Config.Source);
