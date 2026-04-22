@@ -22,6 +22,7 @@ public class ConnectionConfig
 public class TableOverride
 {
     [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("targetName")] public string? TargetName { get; set; }
     [JsonPropertyName("ignore")] public bool? Ignore { get; set; }
     [JsonPropertyName("where")] public string? Where { get; set; }
     [JsonPropertyName("query")] public string? Query { get; set; }
@@ -43,6 +44,7 @@ public class DbEntry
 public class JsonTable
 {
     public string Name { get; set; } = "";
+    public string? TargetName { get; set; }
     public bool? Ignore { get; set; }
     public string? Where { get; set; }
     public string? Query { get; set; }
@@ -60,9 +62,13 @@ public class TableRef
 {
     public string Schema { get; set; } = "dbo";
     public string Name { get; set; } = "";
+    public string? TargetName { get; set; }  // if null, same as Name
     public bool Ignore { get; set; }
     public string? Where { get; set; }
     public string? Query { get; set; }
+
+    /// <summary>The name to use on the target — falls back to Name if TargetName not set.</summary>
+    public string EffectiveTargetName => TargetName ?? Name;
 }
 
 public class ColumnInfo

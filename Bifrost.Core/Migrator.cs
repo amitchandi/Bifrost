@@ -64,7 +64,8 @@ public static class Migrator
                         continue;
                     }
 
-                    var msg = $"    [{DateTime.Now:HH:mm:ss}] -> {(dryRun ? "[DRY] " : "")}Migrating [{t.Schema}].[{t.Name}]";
+                    var rename = t.TargetName != null ? $" → [{t.Schema}].[{t.EffectiveTargetName}]" : "";
+                    var msg = $"    [{DateTime.Now:HH:mm:ss}] -> {(dryRun ? "[DRY] " : "")}Migrating [{t.Schema}].[{t.Name}]{rename}";
                     if (t.Where != null) msg += " (filtered)";
                     if (t.Query != null) msg += " (custom query)";
                     Logger.Log(msg + "...");
@@ -89,7 +90,7 @@ public static class Migrator
                     }
                     catch (Exception ex)
                     {
-                        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [FAIL] {t.Schema}.{t.Name}: {ex.Message}");
+                        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [FAIL] {t.Schema}.{t.Name}{(t.TargetName != null ? $" → {t.EffectiveTargetName}" : "")}: {ex.Message}");
                         totalFail++;
                     }
 
@@ -133,37 +134,39 @@ public static class Migrator
         Microsoft.Data.SqlClient.SqlConnection dstConn,
         TableRef t, bool bulk, bool dropAndCreate = false)
     {
-        var fullName = $"[{t.Schema}].[{t.Name}]";
+        var srcFullName = $"[{t.Schema}].[{t.Name}]";
+        var tgtFullName = $"[{t.Schema}].[{t.EffectiveTargetName}]";
         var columns = Database.GetColumns(srcConn, t.Schema, t.Name);
         if (columns.Count == 0) throw new Exception("No columns found — table may not exist");
 
         var hasIdentity = columns.Any(c => c.IsIdentity);
         var colNames = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
 
-        var createSql = SqlBuilder.BuildCreateTable(t.Schema, t.Name, columns, dropAndCreate);
+        var createSql = SqlBuilder.BuildCreateTable(t.Schema, t.EffectiveTargetName, columns, dropAndCreate);
         Database.ExecuteBatch(dstConn, createSql.Replace("\r\nGO", "").Replace("\nGO", "").Trim());
-        if (!dropAndCreate) Database.ExecuteBatch(dstConn, $"DELETE FROM {fullName}");
+        if (!dropAndCreate) Database.ExecuteBatch(dstConn, $"DELETE FROM {tgtFullName}");
 
         long rows = bulk
-            ? MigrateTableBulk(srcConn, dstConn, t, fullName, colNames, columns, hasIdentity)
-            : MigrateTableInsert(srcConn, dstConn, t, fullName, columns, colNames, hasIdentity);
+            ? MigrateTableBulk(srcConn, dstConn, t, srcFullName, tgtFullName, colNames, columns, hasIdentity)
+            : MigrateTableInsert(srcConn, dstConn, t, srcFullName, tgtFullName, columns, colNames, hasIdentity);
 
-        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [OK] {t.Schema}.{t.Name} ({rows:N0} rows)");
+        var targetLabel = t.TargetName != null ? $"{t.Schema}.{t.Name} → {t.EffectiveTargetName}" : $"{t.Schema}.{t.Name}";
+        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [OK] {targetLabel} ({rows:N0} rows)");
         return rows;
     }
 
     private static long MigrateTableBulk(
         Microsoft.Data.SqlClient.SqlConnection srcConn,
         Microsoft.Data.SqlClient.SqlConnection dstConn,
-        TableRef t, string fullName, string colNames,
+        TableRef t, string srcFullName, string tgtFullName, string colNames,
         List<ColumnInfo> columns, bool hasIdentity)
     {
         using var cmd = srcConn.CreateCommand();
         cmd.CommandTimeout = 300;
         cmd.CommandText = t.Query
             ?? (t.Where != null
-                ? $"SELECT {colNames} FROM {fullName} WHERE {t.Where}"
-                : $"SELECT {colNames} FROM {fullName}");
+                ? $"SELECT {colNames} FROM {srcFullName} WHERE {t.Where}"
+                : $"SELECT {colNames} FROM {srcFullName}");
 
         using var reader = cmd.ExecuteReader();
 
@@ -173,7 +176,7 @@ public static class Migrator
 
         using var bulkCopy = new Microsoft.Data.SqlClient.SqlBulkCopy(dstConn, bulkOptions, null)
         {
-            DestinationTableName = fullName,
+            DestinationTableName = tgtFullName,
             BatchSize = 1000,
             BulkCopyTimeout = 300,
             NotifyAfter = 1000,
@@ -191,20 +194,20 @@ public static class Migrator
         // for small tables (never fires) and misses partial final batches.
         // reader and bulkCopy are done at this point; dstConn is free.
         using var countCmd = dstConn.CreateCommand();
-        countCmd.CommandText = $"SELECT COUNT(*) FROM {fullName}";
+        countCmd.CommandText = $"SELECT COUNT(*) FROM {tgtFullName}";
         return Convert.ToInt64(countCmd.ExecuteScalar());
     }
 
     private static long MigrateTableInsert(
         Microsoft.Data.SqlClient.SqlConnection srcConn,
         Microsoft.Data.SqlClient.SqlConnection dstConn,
-        TableRef t, string fullName, List<ColumnInfo> columns,
+        TableRef t, string srcFullName, string tgtFullName, List<ColumnInfo> columns,
         string colNames, bool hasIdentity)
     {
         if (hasIdentity)
             Database.ExecuteBatch(dstConn,
                 $"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.Name}'), 'TableHasIdentity') = 1 " +
-                $"SET IDENTITY_INSERT {fullName} ON");
+                $"SET IDENTITY_INSERT {tgtFullName} ON");
 
         const int BatchSize = 100;
         long rowCount = 0;
@@ -231,7 +234,7 @@ public static class Migrator
         if (hasIdentity)
             Database.ExecuteBatch(dstConn,
                 $"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.Name}'), 'TableHasIdentity') = 1 " +
-                $"SET IDENTITY_INSERT {fullName} OFF");
+                $"SET IDENTITY_INSERT {tgtFullName} OFF");
 
         return rowCount;
     }

@@ -20,6 +20,7 @@ public static class TableResolver
                     {
                         Schema = parts.Length == 2 ? parts[0] : "dbo",
                         Name = parts.Length == 2 ? parts[1] : parts[0],
+                        TargetName = t.TargetName,
                         Ignore = t.Ignore ?? false,
                         Where = t.Where,
                         Query = t.Query,
@@ -39,6 +40,7 @@ public static class TableResolver
                 {
                     Schema = t.Schema,
                     Name = t.Name,
+                    TargetName = ov.TargetName,
                     Ignore = ov.Ignore ?? false,
                     Where = ov.Where,
                     Query = ov.Query,

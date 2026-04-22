@@ -6,73 +6,230 @@ Logger.UseConsole();
 
 var rootCmd = new RootCommand("Bifrost — SQL Server migration tool");
 
-var configOpt  = new Option<string>("--config",  () => "config.json", "Config file path");
-var outputOpt  = new Option<string>("--output",  () => "output",      "Output directory");
-var dryRunOpt  = new Option<bool>  ("--dry-run", () => false,         "Preview without making changes");
+// ── Shared options ────────────────────────────────────────────────────────────
 
-// ── export ───────────────────────────────────────────────────────────────────
-var exportCmd = new Command("export", "Export tables to .sql files");
-exportCmd.AddOption(configOpt);
-exportCmd.AddOption(outputOpt);
-exportCmd.AddOption(dryRunOpt);
-exportCmd.SetHandler((config, output, dryRun) =>
+var configOpt = new Option<string?>("--config", () => null, "Config file path (if omitted, use inline connection args)");
+var outputOpt = new Option<string>("--output", () => "output", "Output directory");
+var dryRunOpt = new Option<bool>("--dry-run", () => false, "Preview without making changes");
+var bulkOpt = new Option<bool>("--bulk", () => false, "Use SqlBulkCopy");
+var dropCreateOpt = new Option<bool>("--drop-and-create", () => false, "Drop and recreate target tables");
+
+// ── Inline connection options ─────────────────────────────────────────────────
+
+var srcServerOpt = new Option<string?>("--source-server", () => null, "Source server");
+var srcPortOpt = new Option<int>("--source-port", () => 1433, "Source port");
+var srcUserOpt = new Option<string?>("--source-user", () => null, "Source username");
+var srcPassOpt = new Option<string?>("--source-pass", () => null, "Source password");
+var srcDbOpt = new Option<string?>("--source-database", () => null, "Source database");
+var tgtServerOpt = new Option<string?>("--target-server", () => null, "Target server (defaults to source server for same-instance transfers)");
+var tgtPortOpt = new Option<int>("--target-port", () => 1433, "Target port");
+var tgtUserOpt = new Option<string?>("--target-user", () => null, "Target username (defaults to source username)");
+var tgtPassOpt = new Option<string?>("--target-pass", () => null, "Target password (defaults to source password)");
+var tgtDbOpt = new Option<string?>("--target-database", () => null, "Target database");
+var tableFilterOpt = new Option<string>("--table-filter", () => "all", "Table filter: all, tenant, explicit");
+var tenantIdOpt = new Option<string?>("--tenant-id", () => null, "Tenant ID (required when --table-filter tenant)");
+var srcTableOpt = new Option<string?>("--source-table", () => null, "Single source table (e.g. dbo.Orders) — implies explicit filter");
+var tgtTableOpt = new Option<string?>("--target-table", () => null, "Target table name override (e.g. dbo.OrdersArchive)");
+
+// ── Config builder ────────────────────────────────────────────────────────────
+
+static MigrationConfig LoadConfig(string path)
 {
-    var cfg = LoadConfig(config);
+    if (!File.Exists(path)) throw new FileNotFoundException($"Config not found: {path}");
+    return JsonSerializer.Deserialize<MigrationConfig>(File.ReadAllText(path))
+        ?? throw new Exception("Failed to parse config");
+}
+
+static MigrationConfig BuildInlineConfig(
+    string? srcServer, int srcPort, string? srcUser, string? srcPass, string? srcDb,
+    string? tgtServer, int tgtPort, string? tgtUser, string? tgtPass, string? tgtDb,
+    string tableFilter, string? tenantId,
+    string? srcTable, string? tgtTable,
+    bool dropAndCreate)
+{
+    if (srcServer is null) throw new Exception("--source-server is required when not using --config");
+    if (srcDb is null) throw new Exception("--source-database is required when not using --config");
+    if (tgtDb is null) throw new Exception("--target-database is required when not using --config");
+
+    // Same-instance transfer: target defaults to source connection
+    var src = new ConnectionConfig
+    {
+        Server = srcServer,
+        Port = srcPort,
+        Username = srcUser ?? "",
+        Password = srcPass ?? "",
+        Encrypt = false,
+        TrustServerCertificate = true,
+    };
+
+    var tgt = new ConnectionConfig
+    {
+        Server = tgtServer ?? srcServer,
+        Port = tgtPort,
+        Username = tgtUser ?? srcUser ?? "",
+        Password = tgtPass ?? srcPass ?? "",
+        Encrypt = false,
+        TrustServerCertificate = true,
+    };
+
+    List<JsonTable>? tables = null;
+    if (srcTable is not null)
+    {
+        tableFilter = "explicit";
+        tables = [new JsonTable { Name = srcTable, TargetName = tgtTable }];
+    }
+
+    var db = new DbEntry
+    {
+        SourceDatabase = srcDb,
+        TargetDatabase = tgtDb,
+        TableFilter = tableFilter,
+        TenantId = tenantId,
+        Tables = tables,
+        DropAndCreate = dropAndCreate,
+    };
+
+    return new MigrationConfig { Source = src, Target = tgt, Databases = [db] };
+}
+
+static (MigrationConfig cfg, string label) Resolve(
+    string? configPath,
+    string? srcServer, int srcPort, string? srcUser, string? srcPass, string? srcDb,
+    string? tgtServer, int tgtPort, string? tgtUser, string? tgtPass, string? tgtDb,
+    string tableFilter, string? tenantId,
+    string? srcTable, string? tgtTable,
+    bool dropAndCreate)
+{
+    if (configPath is not null)
+        return (LoadConfig(configPath), Path.GetFileNameWithoutExtension(configPath));
+
+    var cfg = BuildInlineConfig(
+        srcServer, srcPort, srcUser, srcPass, srcDb,
+        tgtServer, tgtPort, tgtUser, tgtPass, tgtDb,
+        tableFilter, tenantId, srcTable, tgtTable, dropAndCreate);
+
+    return (cfg, "inline");
+}
+
+// ── export ────────────────────────────────────────────────────────────────────
+
+var exportCmd = new Command("export", "Export tables to .sql files");
+exportCmd.AddOption(configOpt); exportCmd.AddOption(outputOpt); exportCmd.AddOption(dryRunOpt);
+exportCmd.AddOption(dropCreateOpt); exportCmd.AddOption(srcServerOpt); exportCmd.AddOption(srcPortOpt);
+exportCmd.AddOption(srcUserOpt); exportCmd.AddOption(srcPassOpt); exportCmd.AddOption(srcDbOpt);
+exportCmd.AddOption(tgtServerOpt); exportCmd.AddOption(tgtPortOpt); exportCmd.AddOption(tgtUserOpt);
+exportCmd.AddOption(tgtPassOpt); exportCmd.AddOption(tgtDbOpt); exportCmd.AddOption(tableFilterOpt);
+exportCmd.AddOption(tenantIdOpt); exportCmd.AddOption(srcTableOpt); exportCmd.AddOption(tgtTableOpt);
+
+exportCmd.SetHandler((ctx) =>
+{
+    var (cfg, label) = Resolve(
+        ctx.ParseResult.GetValueForOption(configOpt),
+        ctx.ParseResult.GetValueForOption(srcServerOpt), ctx.ParseResult.GetValueForOption(srcPortOpt),
+        ctx.ParseResult.GetValueForOption(srcUserOpt), ctx.ParseResult.GetValueForOption(srcPassOpt),
+        ctx.ParseResult.GetValueForOption(srcDbOpt),
+        ctx.ParseResult.GetValueForOption(tgtServerOpt), ctx.ParseResult.GetValueForOption(tgtPortOpt),
+        ctx.ParseResult.GetValueForOption(tgtUserOpt), ctx.ParseResult.GetValueForOption(tgtPassOpt),
+        ctx.ParseResult.GetValueForOption(tgtDbOpt),
+        ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
+        ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
+        ctx.ParseResult.GetValueForOption(dropCreateOpt));
+
+    var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
+    var output = ctx.ParseResult.GetValueForOption(outputOpt);
     if (!Confirm(cfg, dryRun ? "dry-run export" : "export")) { Console.WriteLine("  Aborted."); return; }
     var result = Exporter.Run(cfg, output, dryRun);
-    if (!dryRun) AppendHistory(cfg, config, "export", result);
+    if (!dryRun) AppendHistory(cfg, label, "export", result);
     Environment.Exit(result);
-}, configOpt, outputOpt, dryRunOpt);
+});
 
-// ── import ───────────────────────────────────────────────────────────────────
+// ── import ────────────────────────────────────────────────────────────────────
+
 var importCmd = new Command("import", "Import .sql files into target database");
-importCmd.AddOption(configOpt);
-importCmd.AddOption(outputOpt);
-importCmd.AddOption(dryRunOpt);
-importCmd.SetHandler((config, output, dryRun) =>
+importCmd.AddOption(configOpt); importCmd.AddOption(outputOpt); importCmd.AddOption(dryRunOpt);
+importCmd.AddOption(dropCreateOpt); importCmd.AddOption(srcServerOpt); importCmd.AddOption(srcPortOpt);
+importCmd.AddOption(srcUserOpt); importCmd.AddOption(srcPassOpt); importCmd.AddOption(srcDbOpt);
+importCmd.AddOption(tgtServerOpt); importCmd.AddOption(tgtPortOpt); importCmd.AddOption(tgtUserOpt);
+importCmd.AddOption(tgtPassOpt); importCmd.AddOption(tgtDbOpt); importCmd.AddOption(tableFilterOpt);
+importCmd.AddOption(tenantIdOpt); importCmd.AddOption(srcTableOpt); importCmd.AddOption(tgtTableOpt);
+
+importCmd.SetHandler((ctx) =>
 {
-    var cfg = LoadConfig(config);
+    var (cfg, label) = Resolve(
+        ctx.ParseResult.GetValueForOption(configOpt),
+        ctx.ParseResult.GetValueForOption(srcServerOpt), ctx.ParseResult.GetValueForOption(srcPortOpt),
+        ctx.ParseResult.GetValueForOption(srcUserOpt), ctx.ParseResult.GetValueForOption(srcPassOpt),
+        ctx.ParseResult.GetValueForOption(srcDbOpt),
+        ctx.ParseResult.GetValueForOption(tgtServerOpt), ctx.ParseResult.GetValueForOption(tgtPortOpt),
+        ctx.ParseResult.GetValueForOption(tgtUserOpt), ctx.ParseResult.GetValueForOption(tgtPassOpt),
+        ctx.ParseResult.GetValueForOption(tgtDbOpt),
+        ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
+        ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
+        ctx.ParseResult.GetValueForOption(dropCreateOpt));
+
+    var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
+    var output = ctx.ParseResult.GetValueForOption(outputOpt);
     if (!Confirm(cfg, dryRun ? "dry-run import" : "import")) { Console.WriteLine("  Aborted."); return; }
     var result = Importer.Run(cfg, output, dryRun);
-    if (!dryRun) AppendHistory(cfg, config, "import", result);
+    if (!dryRun) AppendHistory(cfg, label, "import", result);
     Environment.Exit(result);
-}, configOpt, outputOpt, dryRunOpt);
+});
 
-// ── direct ───────────────────────────────────────────────────────────────────
+// ── direct ────────────────────────────────────────────────────────────────────
+
 var directCmd = new Command("direct", "Migrate directly from source to target");
-var bulkOpt   = new Option<bool>("--bulk", () => false, "Use SqlBulkCopy");
-directCmd.AddOption(configOpt);
-directCmd.AddOption(bulkOpt);
-directCmd.AddOption(dryRunOpt);
-directCmd.SetHandler((config, bulk, dryRun) =>
+directCmd.AddOption(configOpt); directCmd.AddOption(bulkOpt); directCmd.AddOption(dryRunOpt);
+directCmd.AddOption(dropCreateOpt); directCmd.AddOption(srcServerOpt); directCmd.AddOption(srcPortOpt);
+directCmd.AddOption(srcUserOpt); directCmd.AddOption(srcPassOpt); directCmd.AddOption(srcDbOpt);
+directCmd.AddOption(tgtServerOpt); directCmd.AddOption(tgtPortOpt); directCmd.AddOption(tgtUserOpt);
+directCmd.AddOption(tgtPassOpt); directCmd.AddOption(tgtDbOpt); directCmd.AddOption(tableFilterOpt);
+directCmd.AddOption(tenantIdOpt); directCmd.AddOption(srcTableOpt); directCmd.AddOption(tgtTableOpt);
+
+directCmd.SetHandler((ctx) =>
 {
-    var cfg  = LoadConfig(config);
+    var (cfg, label) = Resolve(
+        ctx.ParseResult.GetValueForOption(configOpt),
+        ctx.ParseResult.GetValueForOption(srcServerOpt), ctx.ParseResult.GetValueForOption(srcPortOpt),
+        ctx.ParseResult.GetValueForOption(srcUserOpt), ctx.ParseResult.GetValueForOption(srcPassOpt),
+        ctx.ParseResult.GetValueForOption(srcDbOpt),
+        ctx.ParseResult.GetValueForOption(tgtServerOpt), ctx.ParseResult.GetValueForOption(tgtPortOpt),
+        ctx.ParseResult.GetValueForOption(tgtUserOpt), ctx.ParseResult.GetValueForOption(tgtPassOpt),
+        ctx.ParseResult.GetValueForOption(tgtDbOpt),
+        ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
+        ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
+        ctx.ParseResult.GetValueForOption(dropCreateOpt));
+
+    var bulk = ctx.ParseResult.GetValueForOption(bulkOpt);
+    var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
     var name = (dryRun ? "dry-run " : "") + (bulk ? "direct (bulk)" : "direct");
     if (!Confirm(cfg, name)) { Console.WriteLine("  Aborted."); return; }
     var result = Migrator.Run(cfg, bulk, dryRun);
-    if (!dryRun) AppendHistory(cfg, config, bulk ? "direct-bulk" : "direct", result);
+    if (!dryRun) AppendHistory(cfg, label, bulk ? "direct-bulk" : "direct", result);
     Environment.Exit(result);
-}, configOpt, bulkOpt, dryRunOpt);
+});
 
 // ── restructure ───────────────────────────────────────────────────────────────
+
 var restructureCmd = new Command("restructure", "Move tenant tables into named schemas");
 restructureCmd.AddOption(configOpt);
 restructureCmd.SetHandler((config) =>
 {
+    if (config is null) throw new Exception("--config is required for restructure");
     var cfg = LoadConfig(config);
     if (!Confirm(cfg, "restructure")) { Console.WriteLine("  Aborted."); return; }
     var result = Restructurer.Run(cfg);
-    AppendHistory(cfg, config, "restructure", result);
+    AppendHistory(cfg, Path.GetFileNameWithoutExtension(config), "restructure", result);
     Environment.Exit(result);
 }, configOpt);
 
 // ── status ────────────────────────────────────────────────────────────────────
+
 var statusCmd = new Command("status", "Show table counts and row differences between source and target");
 statusCmd.AddOption(configOpt);
 statusCmd.SetHandler((config) =>
 {
-    var cfg = LoadConfig(config);
-    RunStatus(cfg);
+    if (config is null) throw new Exception("--config is required for status");
+    RunStatus(LoadConfig(config));
 }, configOpt);
 
 rootCmd.AddCommand(exportCmd);
@@ -84,13 +241,6 @@ rootCmd.AddCommand(statusCmd);
 return await rootCmd.InvokeAsync(args);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-static MigrationConfig LoadConfig(string path)
-{
-    if (!File.Exists(path)) throw new FileNotFoundException($"Config not found: {path}");
-    return JsonSerializer.Deserialize<MigrationConfig>(File.ReadAllText(path))
-        ?? throw new Exception("Failed to parse config");
-}
 
 static bool Confirm(MigrationConfig cfg, string operation)
 {
@@ -104,16 +254,16 @@ static bool Confirm(MigrationConfig cfg, string operation)
     return Console.ReadLine()?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) ?? false;
 }
 
-static void AppendHistory(MigrationConfig cfg, string configPath, string operation, int result)
+static void AppendHistory(MigrationConfig cfg, string label, string operation, int result)
 {
     try
     {
         RunHistory.Append(new RunRecord
         {
-            ConfigName = Path.GetFileNameWithoutExtension(configPath),
-            Operation  = operation,
-            StartedAt  = DateTime.Now.ToString("O"),
-            Success    = result == 0,
+            ConfigName = label,
+            Operation = operation,
+            StartedAt = DateTime.Now.ToString("O"),
+            Success = result == 0,
         });
     }
     catch { }
