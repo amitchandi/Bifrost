@@ -38,6 +38,7 @@ public class DbEntry
     [JsonPropertyName("tables")] public List<JsonTable>? Tables { get; set; }
     [JsonPropertyName("overrides")] public List<TableOverride>? Overrides { get; set; }
     [JsonPropertyName("dropAndCreate")] public bool DropAndCreate { get; set; } = false;
+    [JsonPropertyName("appendOnly")] public bool AppendOnly { get; set; } = false;
 }
 
 [JsonConverter(typeof(JsonTableConverter))]
@@ -62,13 +63,32 @@ public class TableRef
 {
     public string Schema { get; set; } = "dbo";
     public string Name { get; set; } = "";
-    public string? TargetName { get; set; }  // if null, same as Name
+    public string? TargetName { get; set; }  // if null, same as Name; may include schema e.g. "dbo.OrdersArchive"
     public bool Ignore { get; set; }
     public string? Where { get; set; }
     public string? Query { get; set; }
 
-    /// <summary>The name to use on the target — falls back to Name if TargetName not set.</summary>
-    public string EffectiveTargetName => TargetName ?? Name;
+    /// <summary>The schema to use on the target — parsed from TargetName if it contains a dot, otherwise same as Schema.</summary>
+    public string EffectiveTargetSchema
+    {
+        get
+        {
+            if (TargetName == null) return Schema;
+            var dot = TargetName.IndexOf('.');
+            return dot >= 0 ? TargetName[..dot] : Schema;
+        }
+    }
+
+    /// <summary>The bare table name to use on the target — strips schema prefix if present.</summary>
+    public string EffectiveTargetName
+    {
+        get
+        {
+            if (TargetName == null) return Name;
+            var dot = TargetName.IndexOf('.');
+            return dot >= 0 ? TargetName[(dot + 1)..] : TargetName;
+        }
+    }
 }
 
 public class ColumnInfo

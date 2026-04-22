@@ -80,7 +80,7 @@ public static class Exporter
                         if (dryRun)
                         {
                             rows = CountRows(sqlConn, t);
-                            Logger.Log($"    [{DateTime.Now:HH:mm:ss}] [DRY] [{t.Schema}].[{t.Name}]{(t.TargetName != null ? $" → {t.EffectiveTargetName}" : "")} — would export {rows:N0} rows");
+                            Logger.Log($"    [{DateTime.Now:HH:mm:ss}] [DRY] [{t.Schema}].[{t.Name}]{(t.TargetName != null ? $" → {t.EffectiveTargetSchema}.{t.EffectiveTargetName}" : "")} — would export {rows:N0} rows");
                             manifestDb.Files.Add($"{t.Schema}.{t.Name}.sql");
                         }
                         else
@@ -157,7 +157,7 @@ public static class Exporter
 
         var hasIdentity = columns.Any(c => c.IsIdentity);
         var colNames = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
-        var fileName = $"{t.Schema}.{t.EffectiveTargetName}.sql";
+        var fileName = $"{t.EffectiveTargetSchema}.{t.EffectiveTargetName}.sql";
         var filePath = Path.Combine(dbOutDir, fileName);
         long rowCount = 0;
         const int BatchSize = 100;
@@ -170,19 +170,19 @@ public static class Exporter
             writer.WriteLine($"-- ============================================================");
             writer.WriteLine();
             writer.WriteLine("-- Schema");
-            writer.Write(SqlBuilder.BuildCreateTable(t.Schema, t.EffectiveTargetName, columns, dropAndCreate));
+            writer.Write(SqlBuilder.BuildCreateTable(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, dropAndCreate));
             writer.WriteLine();
             if (!dropAndCreate)
             {
                 writer.WriteLine("-- Clear existing data");
-                writer.WriteLine($"DELETE FROM [{t.Schema}].[{t.EffectiveTargetName}];");
+                writer.WriteLine($"DELETE FROM [{t.EffectiveTargetSchema}].[{t.EffectiveTargetName}];");
                 writer.WriteLine("GO");
             }
             writer.WriteLine();
 
             if (hasIdentity)
             {
-                writer.WriteLine($"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.EffectiveTargetName}'), 'TableHasIdentity') = 1");
+                writer.WriteLine($"IF OBJECTPROPERTY(OBJECT_ID('{t.EffectiveTargetSchema}.{t.EffectiveTargetName}'), 'TableHasIdentity') = 1");
                 writer.WriteLine($"    SET IDENTITY_INSERT {fullName} ON;");
                 writer.WriteLine("GO");
                 writer.WriteLine();
@@ -192,7 +192,7 @@ public static class Exporter
 
             void WriteInsert(Microsoft.Data.SqlClient.SqlDataReader reader)
             {
-                writer.WriteLine(SqlBuilder.BuildInsert(t.Schema, t.EffectiveTargetName, columns, reader));
+                writer.WriteLine(SqlBuilder.BuildInsert(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, reader));
                 rowCount++;
                 if (rowCount % BatchSize == 0) { writer.WriteLine("GO"); writer.WriteLine(); }
             }
@@ -205,7 +205,7 @@ public static class Exporter
 
             if (hasIdentity)
             {
-                writer.WriteLine($"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.EffectiveTargetName}'), 'TableHasIdentity') = 1");
+                writer.WriteLine($"IF OBJECTPROPERTY(OBJECT_ID('{t.EffectiveTargetSchema}.{t.EffectiveTargetName}'), 'TableHasIdentity') = 1");
                 writer.WriteLine($"    SET IDENTITY_INSERT {fullName} OFF;");
                 writer.WriteLine("GO");
                 writer.WriteLine();

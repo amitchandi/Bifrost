@@ -24,7 +24,8 @@ public class ConfigEditorDialog : BifrostWindow
         TextBox TenantId, TextBox Comment,
         StackPanel TablesPanel, List<TableRowControls> TableRows,
         StackPanel OverridesPanel, List<TableRowControls> OverrideRows,
-        CheckBox DropAndCreate);
+        CheckBox DropAndCreate,
+        CheckBox AppendOnly);
 
     private record TableRowControls(TextBox Name, TextBox TargetName, TextBox Where, TextBox Query, CheckBox Ignore);
     private record TenantRowControls(TextBox TenantId, TextBox Schema, TextBox Database, CheckBox CompatViews, TextBox SourceSchema);
@@ -230,6 +231,13 @@ public class ConfigEditorDialog : BifrostWindow
             Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
             FontSize = 12,
         };
+        var appendOnlyChk = new CheckBox
+        {
+            Content = "Append only (insert without deleting existing rows)",
+            IsChecked = db?.AppendOnly ?? false,
+            Foreground = new SolidColorBrush(Color.Parse("#cdd6f4")),
+            FontSize = 12,
+        };
 
         var filterBox = new ComboBox
         {
@@ -361,14 +369,14 @@ public class ConfigEditorDialog : BifrostWindow
             Width = 30,
         };
 
-        var row = new DbRowControls(srcBox, tgtBox, filterBox, tenantBox, commentBox, tablesPanel, tableRows, overridesPanel, overrideRows, dropAndCreateChk);
+        var row = new DbRowControls(srcBox, tgtBox, filterBox, tenantBox, commentBox, tablesPanel, tableRows, overridesPanel, overrideRows, dropAndCreateChk, appendOnlyChk);
         _dbRows.Add(row);
 
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,Auto"),
             ColumnSpacing = 6,
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto"),
             RowSpacing = 4,
         };
 
@@ -381,6 +389,7 @@ public class ConfigEditorDialog : BifrostWindow
         Grid.SetColumn(explicitSection, 0); Grid.SetRow(explicitSection, 3); Grid.SetColumnSpan(explicitSection, 3);
         Grid.SetColumn(overridesSection, 0); Grid.SetRow(overridesSection, 4); Grid.SetColumnSpan(overridesSection, 3);
         Grid.SetColumn(dropAndCreateChk, 0); Grid.SetRow(dropAndCreateChk, 5); Grid.SetColumnSpan(dropAndCreateChk, 3);
+        Grid.SetColumn(appendOnlyChk, 0); Grid.SetRow(appendOnlyChk, 6); Grid.SetColumnSpan(appendOnlyChk, 3);
 
         grid.Children.Add(srcBox);
         grid.Children.Add(tgtBox);
@@ -391,6 +400,7 @@ public class ConfigEditorDialog : BifrostWindow
         grid.Children.Add(explicitSection);
         grid.Children.Add(overridesSection);
         grid.Children.Add(dropAndCreateChk);
+        grid.Children.Add(appendOnlyChk);
 
         var container = new Border
         {
@@ -631,6 +641,7 @@ public class ConfigEditorDialog : BifrostWindow
                     TenantId = r.TenantId.Text?.Trim() is { Length: > 0 } t ? t : null,
                     Comment = r.Comment.Text?.Trim() is { Length: > 0 } c ? c : null,
                     DropAndCreate = r.DropAndCreate.IsChecked ?? false,
+                    AppendOnly = r.AppendOnly.IsChecked ?? false,
                     Tables = filter == "explicit"
                         ? r.TableRows.Select(tr => new JsonTable
                         {

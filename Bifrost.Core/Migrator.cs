@@ -64,7 +64,7 @@ public static class Migrator
                         continue;
                     }
 
-                    var rename = t.TargetName != null ? $" → [{t.Schema}].[{t.EffectiveTargetName}]" : "";
+                    var rename = t.TargetName != null ? $" → [{t.EffectiveTargetSchema}].[{t.EffectiveTargetName}]" : "";
                     var msg = $"    [{DateTime.Now:HH:mm:ss}] -> {(dryRun ? "[DRY] " : "")}Migrating [{t.Schema}].[{t.Name}]{rename}";
                     if (t.Where != null) msg += " (filtered)";
                     if (t.Query != null) msg += " (custom query)";
@@ -81,7 +81,7 @@ public static class Migrator
                         else
                         {
                             rows = RetryHelper.Run(
-                                () => MigrateTable(srcConn, dstConn!, t, bulk, entry.DropAndCreate),
+                                () => MigrateTable(srcConn, dstConn!, t, bulk, entry.DropAndCreate, entry.AppendOnly),
                                 label: $"{t.Schema}.{t.Name}");
                         }
 
@@ -90,7 +90,7 @@ public static class Migrator
                     }
                     catch (Exception ex)
                     {
-                        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [FAIL] {t.Schema}.{t.Name}{(t.TargetName != null ? $" → {t.EffectiveTargetName}" : "")}: {ex.Message}");
+                        Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [FAIL] {t.Schema}.{t.Name}{(t.TargetName != null ? $" → {t.EffectiveTargetSchema}.{t.EffectiveTargetName}" : "")}: {ex.Message}");
                         totalFail++;
                     }
 
@@ -132,17 +132,17 @@ public static class Migrator
     private static long MigrateTable(
         Microsoft.Data.SqlClient.SqlConnection srcConn,
         Microsoft.Data.SqlClient.SqlConnection dstConn,
-        TableRef t, bool bulk, bool dropAndCreate = false)
+        TableRef t, bool bulk, bool dropAndCreate = false, bool appendOnly = false)
     {
         var srcFullName = $"[{t.Schema}].[{t.Name}]";
-        var tgtFullName = $"[{t.Schema}].[{t.EffectiveTargetName}]";
+        var tgtFullName = $"[{t.EffectiveTargetSchema}].[{t.EffectiveTargetName}]";
         var columns = Database.GetColumns(srcConn, t.Schema, t.Name);
         if (columns.Count == 0) throw new Exception("No columns found — table may not exist");
 
         var hasIdentity = columns.Any(c => c.IsIdentity);
         var colNames = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
 
-        var createSql = SqlBuilder.BuildCreateTable(t.Schema, t.EffectiveTargetName, columns, dropAndCreate);
+        var createSql = SqlBuilder.BuildCreateTable(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, dropAndCreate);
         Database.ExecuteBatch(dstConn, createSql.Replace("\r\nGO", "").Replace("\nGO", "").Trim());
         if (!dropAndCreate) Database.ExecuteBatch(dstConn, $"DELETE FROM {tgtFullName}");
 
@@ -150,7 +150,7 @@ public static class Migrator
             ? MigrateTableBulk(srcConn, dstConn, t, srcFullName, tgtFullName, colNames, columns, hasIdentity)
             : MigrateTableInsert(srcConn, dstConn, t, srcFullName, tgtFullName, columns, colNames, hasIdentity);
 
-        var targetLabel = t.TargetName != null ? $"{t.Schema}.{t.Name} → {t.EffectiveTargetName}" : $"{t.Schema}.{t.Name}";
+        var targetLabel = t.TargetName != null ? $"{t.Schema}.{t.Name} → {t.EffectiveTargetSchema}.{t.EffectiveTargetName}" : $"{t.Schema}.{t.Name}";
         Logger.Log($"       [{DateTime.Now:HH:mm:ss}] [OK] {targetLabel} ({rows:N0} rows)");
         return rows;
     }
@@ -206,7 +206,7 @@ public static class Migrator
     {
         if (hasIdentity)
             Database.ExecuteBatch(dstConn,
-                $"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.Name}'), 'TableHasIdentity') = 1 " +
+                $"IF OBJECTPROPERTY(OBJECT_ID('{t.EffectiveTargetSchema}.{t.EffectiveTargetName}'), 'TableHasIdentity') = 1 " +
                 $"SET IDENTITY_INSERT {tgtFullName} ON");
 
         const int BatchSize = 100;
@@ -222,7 +222,7 @@ public static class Migrator
 
         void OnRow(Microsoft.Data.SqlClient.SqlDataReader reader)
         {
-            insertBuffer.Add(SqlBuilder.BuildInsert(t.Schema, t.Name, columns, reader));
+            insertBuffer.Add(SqlBuilder.BuildInsert(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, reader));
             rowCount++;
             if (insertBuffer.Count >= BatchSize) FlushBuffer();
         }
@@ -233,7 +233,7 @@ public static class Migrator
 
         if (hasIdentity)
             Database.ExecuteBatch(dstConn,
-                $"IF OBJECTPROPERTY(OBJECT_ID('{t.Schema}.{t.Name}'), 'TableHasIdentity') = 1 " +
+                $"IF OBJECTPROPERTY(OBJECT_ID('{t.EffectiveTargetSchema}.{t.EffectiveTargetName}'), 'TableHasIdentity') = 1 " +
                 $"SET IDENTITY_INSERT {tgtFullName} OFF");
 
         return rowCount;

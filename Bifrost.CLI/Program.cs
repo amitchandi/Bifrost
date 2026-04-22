@@ -4,6 +4,9 @@ using Bifrost.Core;
 
 Logger.UseConsole();
 
+var logPath = Path.Combine(AppContext.BaseDirectory, "bifrost-latest.log");
+Logger.UseFile(logPath);
+
 var rootCmd = new RootCommand("Bifrost — SQL Server migration tool");
 
 // ── Shared options ────────────────────────────────────────────────────────────
@@ -13,6 +16,7 @@ var outputOpt = new Option<string>("--output", () => "output", "Output directory
 var dryRunOpt = new Option<bool>("--dry-run", () => false, "Preview without making changes");
 var bulkOpt = new Option<bool>("--bulk", () => false, "Use SqlBulkCopy");
 var dropCreateOpt = new Option<bool>("--drop-and-create", () => false, "Drop and recreate target tables");
+var appendOnlyOpt = new Option<bool>("--append-only", () => false, "Insert into target without deleting existing rows");
 
 // ── Inline connection options ─────────────────────────────────────────────────
 
@@ -45,7 +49,8 @@ static MigrationConfig BuildInlineConfig(
     string? tgtServer, int tgtPort, string? tgtUser, string? tgtPass, string? tgtDb,
     string tableFilter, string? tenantId,
     string? srcTable, string? tgtTable,
-    bool dropAndCreate)
+    bool dropAndCreate,
+    bool appendOnly = false)
 {
     if (srcServer is null) throw new Exception("--source-server is required when not using --config");
     if (srcDb is null) throw new Exception("--source-database is required when not using --config");
@@ -87,6 +92,7 @@ static MigrationConfig BuildInlineConfig(
         TenantId = tenantId,
         Tables = tables,
         DropAndCreate = dropAndCreate,
+        AppendOnly = appendOnly,
     };
 
     return new MigrationConfig { Source = src, Target = tgt, Databases = [db] };
@@ -98,7 +104,8 @@ static (MigrationConfig cfg, string label) Resolve(
     string? tgtServer, int tgtPort, string? tgtUser, string? tgtPass, string? tgtDb,
     string tableFilter, string? tenantId,
     string? srcTable, string? tgtTable,
-    bool dropAndCreate)
+    bool dropAndCreate,
+    bool appendOnly = false)
 {
     if (configPath is not null)
         return (LoadConfig(configPath), Path.GetFileNameWithoutExtension(configPath));
@@ -115,7 +122,7 @@ static (MigrationConfig cfg, string label) Resolve(
 
 var exportCmd = new Command("export", "Export tables to .sql files");
 exportCmd.AddOption(configOpt); exportCmd.AddOption(outputOpt); exportCmd.AddOption(dryRunOpt);
-exportCmd.AddOption(dropCreateOpt); exportCmd.AddOption(srcServerOpt); exportCmd.AddOption(srcPortOpt);
+exportCmd.AddOption(dropCreateOpt); exportCmd.AddOption(appendOnlyOpt); exportCmd.AddOption(srcServerOpt); exportCmd.AddOption(srcPortOpt);
 exportCmd.AddOption(srcUserOpt); exportCmd.AddOption(srcPassOpt); exportCmd.AddOption(srcDbOpt);
 exportCmd.AddOption(tgtServerOpt); exportCmd.AddOption(tgtPortOpt); exportCmd.AddOption(tgtUserOpt);
 exportCmd.AddOption(tgtPassOpt); exportCmd.AddOption(tgtDbOpt); exportCmd.AddOption(tableFilterOpt);
@@ -133,7 +140,8 @@ exportCmd.SetHandler((ctx) =>
         ctx.ParseResult.GetValueForOption(tgtDbOpt),
         ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
         ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
-        ctx.ParseResult.GetValueForOption(dropCreateOpt));
+        ctx.ParseResult.GetValueForOption(dropCreateOpt),
+        ctx.ParseResult.GetValueForOption(appendOnlyOpt));
 
     var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
     var output = ctx.ParseResult.GetValueForOption(outputOpt);
@@ -147,7 +155,7 @@ exportCmd.SetHandler((ctx) =>
 
 var importCmd = new Command("import", "Import .sql files into target database");
 importCmd.AddOption(configOpt); importCmd.AddOption(outputOpt); importCmd.AddOption(dryRunOpt);
-importCmd.AddOption(dropCreateOpt); importCmd.AddOption(srcServerOpt); importCmd.AddOption(srcPortOpt);
+importCmd.AddOption(dropCreateOpt); importCmd.AddOption(appendOnlyOpt); importCmd.AddOption(srcServerOpt); importCmd.AddOption(srcPortOpt);
 importCmd.AddOption(srcUserOpt); importCmd.AddOption(srcPassOpt); importCmd.AddOption(srcDbOpt);
 importCmd.AddOption(tgtServerOpt); importCmd.AddOption(tgtPortOpt); importCmd.AddOption(tgtUserOpt);
 importCmd.AddOption(tgtPassOpt); importCmd.AddOption(tgtDbOpt); importCmd.AddOption(tableFilterOpt);
@@ -165,7 +173,8 @@ importCmd.SetHandler((ctx) =>
         ctx.ParseResult.GetValueForOption(tgtDbOpt),
         ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
         ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
-        ctx.ParseResult.GetValueForOption(dropCreateOpt));
+        ctx.ParseResult.GetValueForOption(dropCreateOpt),
+        ctx.ParseResult.GetValueForOption(appendOnlyOpt));
 
     var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
     var output = ctx.ParseResult.GetValueForOption(outputOpt);
@@ -179,7 +188,7 @@ importCmd.SetHandler((ctx) =>
 
 var directCmd = new Command("direct", "Migrate directly from source to target");
 directCmd.AddOption(configOpt); directCmd.AddOption(bulkOpt); directCmd.AddOption(dryRunOpt);
-directCmd.AddOption(dropCreateOpt); directCmd.AddOption(srcServerOpt); directCmd.AddOption(srcPortOpt);
+directCmd.AddOption(dropCreateOpt); directCmd.AddOption(appendOnlyOpt); directCmd.AddOption(srcServerOpt); directCmd.AddOption(srcPortOpt);
 directCmd.AddOption(srcUserOpt); directCmd.AddOption(srcPassOpt); directCmd.AddOption(srcDbOpt);
 directCmd.AddOption(tgtServerOpt); directCmd.AddOption(tgtPortOpt); directCmd.AddOption(tgtUserOpt);
 directCmd.AddOption(tgtPassOpt); directCmd.AddOption(tgtDbOpt); directCmd.AddOption(tableFilterOpt);
@@ -197,7 +206,8 @@ directCmd.SetHandler((ctx) =>
         ctx.ParseResult.GetValueForOption(tgtDbOpt),
         ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
         ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
-        ctx.ParseResult.GetValueForOption(dropCreateOpt));
+        ctx.ParseResult.GetValueForOption(dropCreateOpt),
+        ctx.ParseResult.GetValueForOption(appendOnlyOpt));
 
     var bulk = ctx.ParseResult.GetValueForOption(bulkOpt);
     var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
