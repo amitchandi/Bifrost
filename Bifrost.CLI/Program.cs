@@ -115,7 +115,7 @@ static (MigrationConfig cfg, string label) Resolve(
     var cfg = BuildInlineConfig(
         srcServer, srcPort, srcUser, srcPass, srcDb,
         tgtServer, tgtPort, tgtUser, tgtPass, tgtDb,
-        tableFilter, tenantId, srcTable, tgtTable, dropAndCreate);
+        tableFilter, tenantId, srcTable, tgtTable, where, query, dropAndCreate, appendOnly);
 
     return (cfg, "inline");
 }
