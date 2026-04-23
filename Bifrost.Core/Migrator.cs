@@ -117,6 +117,15 @@ public static class Migrator
         return totalFail > 0 ? 1 : 0;
     }
 
+    private static bool TableExistsOnTarget(Microsoft.Data.SqlClient.SqlConnection conn, string schema, string table)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = @schema AND t.name = @table";
+        cmd.Parameters.AddWithValue("@schema", schema);
+        cmd.Parameters.AddWithValue("@table", table);
+        return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+    }
+
     private static long CountRows(Microsoft.Data.SqlClient.SqlConnection conn, TableRef t)
     {
         using var cmd = conn.CreateCommand();
@@ -142,12 +151,25 @@ public static class Migrator
         var hasIdentity = columns.Any(c => c.IsIdentity);
         var colNames = string.Join(", ", columns.Select(c => $"[{c.ColName}]"));
 
-        var createSql = SqlBuilder.BuildCreateTable(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, dropAndCreate);
-        Database.ExecuteBatch(dstConn, createSql.Replace("\r\nGO", "").Replace("\nGO", "").Trim());
-        if (!dropAndCreate) Database.ExecuteBatch(dstConn, $"DELETE FROM {tgtFullName}");
+        var tableExists = TableExistsOnTarget(dstConn, t.EffectiveTargetSchema, t.EffectiveTargetName);
+
+        if (dropAndCreate)
+        {
+            var createSql = SqlBuilder.BuildCreateTable(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, dropAndCreate: true);
+            Database.ExecuteBatch(dstConn, createSql.Replace("\r\nGO", "").Replace("\nGO", "").Trim());
+        }
+        else if (!tableExists)
+        {
+            var createSql = SqlBuilder.BuildCreateTable(t.EffectiveTargetSchema, t.EffectiveTargetName, columns, dropAndCreate: false);
+            Database.ExecuteBatch(dstConn, createSql.Replace("\r\nGO", "").Replace("\nGO", "").Trim());
+        }
+        else if (!appendOnly)
+        {
+            Database.ExecuteBatch(dstConn, $"DELETE FROM {tgtFullName}");
+        }
 
         long rows = bulk
-            ? MigrateTableBulk(srcConn, dstConn, t, srcFullName, tgtFullName, colNames, columns, hasIdentity)
+            ? MigrateTableBulk(srcConn, dstConn, t, srcFullName, tgtFullName, colNames, hasIdentity)
             : MigrateTableInsert(srcConn, dstConn, t, srcFullName, tgtFullName, columns, colNames, hasIdentity);
 
         var targetLabel = t.TargetName != null ? $"{t.Schema}.{t.Name} → {t.EffectiveTargetSchema}.{t.EffectiveTargetName}" : $"{t.Schema}.{t.Name}";
@@ -159,7 +181,7 @@ public static class Migrator
         Microsoft.Data.SqlClient.SqlConnection srcConn,
         Microsoft.Data.SqlClient.SqlConnection dstConn,
         TableRef t, string srcFullName, string tgtFullName, string colNames,
-        List<ColumnInfo> columns, bool hasIdentity)
+        bool hasIdentity)
     {
         using var cmd = srcConn.CreateCommand();
         cmd.CommandTimeout = 300;

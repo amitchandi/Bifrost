@@ -4,9 +4,6 @@ using Bifrost.Core;
 
 Logger.UseConsole();
 
-var logPath = Path.Combine(AppContext.BaseDirectory, "bifrost-latest.log");
-Logger.UseFile(logPath);
-
 var rootCmd = new RootCommand("Bifrost — SQL Server migration tool");
 
 // ── Shared options ────────────────────────────────────────────────────────────
@@ -16,6 +13,7 @@ var outputOpt = new Option<string>("--output", () => "output", "Output directory
 var dryRunOpt = new Option<bool>("--dry-run", () => false, "Preview without making changes");
 var bulkOpt = new Option<bool>("--bulk", () => false, "Use SqlBulkCopy");
 var dropCreateOpt = new Option<bool>("--drop-and-create", () => false, "Drop and recreate target tables");
+var noHistoryOpt = new Option<bool>("--no-history", () => false, "Do not record this run in history");
 var appendOnlyOpt = new Option<bool>("--append-only", () => false, "Insert into target without deleting existing rows");
 
 // ── Inline connection options ─────────────────────────────────────────────────
@@ -34,6 +32,8 @@ var tableFilterOpt = new Option<string>("--table-filter", () => "all", "Table fi
 var tenantIdOpt = new Option<string?>("--tenant-id", () => null, "Tenant ID (required when --table-filter tenant)");
 var srcTableOpt = new Option<string?>("--source-table", () => null, "Single source table (e.g. dbo.Orders) — implies explicit filter");
 var tgtTableOpt = new Option<string?>("--target-table", () => null, "Target table name override (e.g. dbo.OrdersArchive)");
+var whereOpt = new Option<string?>("--where", () => null, "WHERE clause to filter rows from the source table");
+var queryOpt = new Option<string?>("--query", () => null, "Custom SELECT query to read from the source table");
 
 // ── Config builder ────────────────────────────────────────────────────────────
 
@@ -49,6 +49,7 @@ static MigrationConfig BuildInlineConfig(
     string? tgtServer, int tgtPort, string? tgtUser, string? tgtPass, string? tgtDb,
     string tableFilter, string? tenantId,
     string? srcTable, string? tgtTable,
+    string? where, string? query,
     bool dropAndCreate,
     bool appendOnly = false)
 {
@@ -81,7 +82,7 @@ static MigrationConfig BuildInlineConfig(
     if (srcTable is not null)
     {
         tableFilter = "explicit";
-        tables = [new JsonTable { Name = srcTable, TargetName = tgtTable }];
+        tables = [new JsonTable { Name = srcTable, TargetName = tgtTable, Where = where, Query = query }];
     }
 
     var db = new DbEntry
@@ -104,6 +105,7 @@ static (MigrationConfig cfg, string label) Resolve(
     string? tgtServer, int tgtPort, string? tgtUser, string? tgtPass, string? tgtDb,
     string tableFilter, string? tenantId,
     string? srcTable, string? tgtTable,
+    string? where, string? query,
     bool dropAndCreate,
     bool appendOnly = false)
 {
@@ -127,6 +129,8 @@ exportCmd.AddOption(srcUserOpt); exportCmd.AddOption(srcPassOpt); exportCmd.AddO
 exportCmd.AddOption(tgtServerOpt); exportCmd.AddOption(tgtPortOpt); exportCmd.AddOption(tgtUserOpt);
 exportCmd.AddOption(tgtPassOpt); exportCmd.AddOption(tgtDbOpt); exportCmd.AddOption(tableFilterOpt);
 exportCmd.AddOption(tenantIdOpt); exportCmd.AddOption(srcTableOpt); exportCmd.AddOption(tgtTableOpt);
+exportCmd.AddOption(whereOpt); exportCmd.AddOption(queryOpt);
+exportCmd.AddOption(noHistoryOpt);
 
 exportCmd.SetHandler((ctx) =>
 {
@@ -140,14 +144,16 @@ exportCmd.SetHandler((ctx) =>
         ctx.ParseResult.GetValueForOption(tgtDbOpt),
         ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
         ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
+        ctx.ParseResult.GetValueForOption(whereOpt), ctx.ParseResult.GetValueForOption(queryOpt),
         ctx.ParseResult.GetValueForOption(dropCreateOpt),
         ctx.ParseResult.GetValueForOption(appendOnlyOpt));
 
     var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
     var output = ctx.ParseResult.GetValueForOption(outputOpt);
     if (!Confirm(cfg, dryRun ? "dry-run export" : "export")) { Console.WriteLine("  Aborted."); return; }
+    var noHistory = ctx.ParseResult.GetValueForOption(noHistoryOpt);
     var result = Exporter.Run(cfg, output, dryRun);
-    if (!dryRun) AppendHistory(cfg, label, "export", result);
+    if (!dryRun && !noHistory) AppendHistory(cfg, label, "export", result);
     Environment.Exit(result);
 });
 
@@ -160,6 +166,8 @@ importCmd.AddOption(srcUserOpt); importCmd.AddOption(srcPassOpt); importCmd.AddO
 importCmd.AddOption(tgtServerOpt); importCmd.AddOption(tgtPortOpt); importCmd.AddOption(tgtUserOpt);
 importCmd.AddOption(tgtPassOpt); importCmd.AddOption(tgtDbOpt); importCmd.AddOption(tableFilterOpt);
 importCmd.AddOption(tenantIdOpt); importCmd.AddOption(srcTableOpt); importCmd.AddOption(tgtTableOpt);
+importCmd.AddOption(whereOpt); importCmd.AddOption(queryOpt);
+importCmd.AddOption(noHistoryOpt);
 
 importCmd.SetHandler((ctx) =>
 {
@@ -173,14 +181,16 @@ importCmd.SetHandler((ctx) =>
         ctx.ParseResult.GetValueForOption(tgtDbOpt),
         ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
         ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
+        ctx.ParseResult.GetValueForOption(whereOpt), ctx.ParseResult.GetValueForOption(queryOpt),
         ctx.ParseResult.GetValueForOption(dropCreateOpt),
         ctx.ParseResult.GetValueForOption(appendOnlyOpt));
 
     var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
     var output = ctx.ParseResult.GetValueForOption(outputOpt);
     if (!Confirm(cfg, dryRun ? "dry-run import" : "import")) { Console.WriteLine("  Aborted."); return; }
+    var noHistory = ctx.ParseResult.GetValueForOption(noHistoryOpt);
     var result = Importer.Run(cfg, output, dryRun);
-    if (!dryRun) AppendHistory(cfg, label, "import", result);
+    if (!dryRun && !noHistory) AppendHistory(cfg, label, "import", result);
     Environment.Exit(result);
 });
 
@@ -193,6 +203,8 @@ directCmd.AddOption(srcUserOpt); directCmd.AddOption(srcPassOpt); directCmd.AddO
 directCmd.AddOption(tgtServerOpt); directCmd.AddOption(tgtPortOpt); directCmd.AddOption(tgtUserOpt);
 directCmd.AddOption(tgtPassOpt); directCmd.AddOption(tgtDbOpt); directCmd.AddOption(tableFilterOpt);
 directCmd.AddOption(tenantIdOpt); directCmd.AddOption(srcTableOpt); directCmd.AddOption(tgtTableOpt);
+directCmd.AddOption(whereOpt); directCmd.AddOption(queryOpt);
+directCmd.AddOption(noHistoryOpt);
 
 directCmd.SetHandler((ctx) =>
 {
@@ -206,6 +218,7 @@ directCmd.SetHandler((ctx) =>
         ctx.ParseResult.GetValueForOption(tgtDbOpt),
         ctx.ParseResult.GetValueForOption(tableFilterOpt), ctx.ParseResult.GetValueForOption(tenantIdOpt),
         ctx.ParseResult.GetValueForOption(srcTableOpt), ctx.ParseResult.GetValueForOption(tgtTableOpt),
+        ctx.ParseResult.GetValueForOption(whereOpt), ctx.ParseResult.GetValueForOption(queryOpt),
         ctx.ParseResult.GetValueForOption(dropCreateOpt),
         ctx.ParseResult.GetValueForOption(appendOnlyOpt));
 
@@ -213,8 +226,9 @@ directCmd.SetHandler((ctx) =>
     var dryRun = ctx.ParseResult.GetValueForOption(dryRunOpt);
     var name = (dryRun ? "dry-run " : "") + (bulk ? "direct (bulk)" : "direct");
     if (!Confirm(cfg, name)) { Console.WriteLine("  Aborted."); return; }
+    var noHistory = ctx.ParseResult.GetValueForOption(noHistoryOpt);
     var result = Migrator.Run(cfg, bulk, dryRun);
-    if (!dryRun) AppendHistory(cfg, label, bulk ? "direct-bulk" : "direct", result);
+    if (!dryRun && !noHistory) AppendHistory(cfg, label, bulk ? "direct-bulk" : "direct", result);
     Environment.Exit(result);
 });
 
